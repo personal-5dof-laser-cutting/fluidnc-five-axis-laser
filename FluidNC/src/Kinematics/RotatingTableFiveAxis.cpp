@@ -60,15 +60,16 @@ namespace Kinematics {
         float x_offset = tan(beta) * (_offset_z + _rotation_offset - (cartesian[Z_AXIS] / 2));
 
         //float dz = _rotation_offset - cos(beta) * _rotation_offset;
-        float dz = (1.0f - cos(beta)) * (_rotation_offset + _offset_z);
-        x_offset *= dz / (_rotation_offset + _offset_z);
+        float dz = (_rotation_offset + _offset_z) / cos(beta) - (_rotation_offset + _offset_z);
+
         rx += x_offset;
 
         motors[X_AXIS] = rx + _center_x;
         motors[Y_AXIS] = ry + _center_y;
 
         // motors[2] = -(_rotation_offset - cos(alpha) * _rotation_offset);
-        motors[Z_AXIS] = _offset_z + (cartesian[Z_AXIS] / 2) - dz;
+        motors[Z_AXIS] = _max_z + dz - _offset_z - cartesian[Z_AXIS] / 2;
+        //motors[Z_AXIS] = _offset_z + (cartesian[Z_AXIS] / 2) - dz;
 
 
 
