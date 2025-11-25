@@ -23,6 +23,17 @@ namespace Kinematics {
     void RotatingTableFiveAxis::init() {
         //log_info("Kinematic system:" << name() << " roll_offset:" << _roll_offset);
     }
+
+    void RotatingTableFiveAxis::init_position() {
+        float angles[MAX_N_AXIS]    = { 0.0, 0.0, 0.0 };
+        float cartesian[MAX_N_AXIS] = { 0.0, 0.0, 0.0 };
+        // Calculate the Z offset at the arm zero angles ...
+        // Z offset is the z distance from the motor axes to the end effector axes at zero angle
+        motors_to_cartesian(cartesian, angles, 3);  // Sets the cartesian values
+        log_info("  Z Offset:" << cartesian[Z_AXIS]);
+    }
+
+
     // ANYTHING BElOW IS WRONG.
     bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors, float* cartesian) {
         motors[0] = motors[1] = motors[2] = motors[3] = motors[4] = 0;
