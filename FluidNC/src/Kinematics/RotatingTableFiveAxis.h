@@ -39,12 +39,13 @@ namespace Kinematics {
         // Offset to align the reported TABLE_AXIS 0° to the physical home switch position.
         // Units: degrees (same units as the rotary axis is configured to use).
         float _max_z = 0.0f;
-        float _offset_z = 0.0f;
+        float _focus_offset = 0.0f;
         float _max_angle = 0.0f;
         float _kinematic_segment_len_mm = 1.0;
         float _center_x = 0;
         float _center_y = 0;
         float _rotation_offset = 0;
+        float _z_height = 0;
     };
 
 }  // namespace Kinematics

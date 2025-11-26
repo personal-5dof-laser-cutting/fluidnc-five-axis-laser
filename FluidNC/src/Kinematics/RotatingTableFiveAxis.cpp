@@ -12,12 +12,13 @@ namespace Kinematics {
 
     void RotatingTableFiveAxis::group(Configuration::HandlerBase& handler) {
         handler.item("max_z_mm", _max_z);
-        handler.item("offset_z", _offset_z);
+        handler.item("focus_offset", _focus_offset);
         handler.item("max_angle", _max_angle);
         handler.item("kinematic_segment_len_mm", _kinematic_segment_len_mm);
         handler.item("center_x", _center_x);
         handler.item("center_y", _center_y);
         handler.item("rotation_offset", _rotation_offset);
+        handler.item("z_height", _z_height);
     }
 
     void RotatingTableFiveAxis::init() {
@@ -57,10 +58,10 @@ namespace Kinematics {
         float rx = cos(alpha) * orx - sin(alpha) * ry;
         ry = sin(alpha) * orx + cos(alpha) * ry;
 
-        float x_offset = tan(beta) * (_offset_z + _rotation_offset - (cartesian[Z_AXIS] / 2));
+        float x_offset = tan(beta) * (_focus_offset + _rotation_offset);
 
         //float dz = _rotation_offset - cos(beta) * _rotation_offset;
-        float dz = (_rotation_offset + _offset_z) / cos(beta) - (_rotation_offset + _offset_z);
+        float dz = (_rotation_offset + _focus_offset) / cos(beta) - (_rotation_offset + _focus_offset);
 
         rx += x_offset;
 
@@ -68,7 +69,7 @@ namespace Kinematics {
         motors[Y_AXIS] = ry + _center_y;
 
         // motors[2] = -(_rotation_offset - cos(alpha) * _rotation_offset);
-        motors[Z_AXIS] = _max_z + dz - _offset_z - cartesian[Z_AXIS] / 2;
+        motors[Z_AXIS] = _z_height + dz - _focus_offset - cartesian[Z_AXIS] / 2;
         //motors[Z_AXIS] = _offset_z + (cartesian[Z_AXIS] / 2) - dz;
 
 
@@ -83,18 +84,17 @@ namespace Kinematics {
         float alpha = motors[A_AXIS] * to_radians, beta = motors[B_AXIS] * to_radians;
 
         //float dz = _rotation_offset - cos(beta) * _rotation_offset;
-        float dz = (1.0f - cos(beta)) * (_rotation_offset + _offset_z);
+        float dz = (_rotation_offset + _focus_offset) / cos(beta) - (_rotation_offset + _focus_offset);
 
-        float z = motors[Z_AXIS] - _offset_z + dz;
-        z*=2;
+        float z = motors[Z_AXIS] - _z_height - dz + _focus_offset;
+        z*=-2;
 
         cartesian[Z_AXIS] = z;
 
         float x = motors[X_AXIS];
         float y = motors[Y_AXIS];
 
-        float x_offset = tan(beta) * (_offset_z + _rotation_offset - (cartesian[Z_AXIS] / 2));
-        x_offset *= dz / (_rotation_offset + _offset_z);
+        float x_offset = tan(beta) * (_focus_offset + _rotation_offset);
 
         x -= x_offset;
         x -= _center_x;
@@ -111,8 +111,13 @@ namespace Kinematics {
         float dy = sin(alpha) * leng;
         float dx = cos(alpha) * leng;
 
-        cartesian[A_AXIS] = atan2(dy, z);
-        cartesian[B_AXIS] = atan2(dx, z);
+        cartesian[A_AXIS] = atan2(dy, z) * to_degrees;
+        cartesian[B_AXIS] = atan2(dx, z) * to_degrees;
+
+        if( z == 0) {
+            cartesian[A_AXIS] = 0;
+            cartesian[B_AXIS] = 0;
+        }
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
