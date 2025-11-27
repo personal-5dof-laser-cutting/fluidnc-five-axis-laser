@@ -60,8 +60,8 @@ namespace Kinematics {
         if (alpha > 180) {
             alpha = 360 - alpha;
         }
-        motors[A_AXIS] = alpha * to_degrees;
-        motors[B_AXIS] = beta * to_degrees;
+        motors[A_AXIS] = -alpha * to_degrees;
+        motors[B_AXIS] = -beta * to_degrees;
 
         float orx = cartesian[X_AXIS] - _center_x, ry = cartesian[Y_AXIS] - _center_y;
         float rx = cos(alpha) * orx - sin(alpha) * ry;
@@ -90,7 +90,7 @@ namespace Kinematics {
         constexpr float to_radians = M_PI / 180;
         constexpr float to_degrees = 180 / M_PI;
 
-        float alpha = motors[A_AXIS] * to_radians, beta = motors[B_AXIS] * to_radians;
+        float alpha = -motors[A_AXIS] * to_radians, beta = -motors[B_AXIS] * to_radians;
 
         //float dz = _rotation_offset - cos(beta) * _rotation_offset;
         float dz = (_rotation_offset + _focus_offset) / cos(beta) - (_rotation_offset + _focus_offset);
