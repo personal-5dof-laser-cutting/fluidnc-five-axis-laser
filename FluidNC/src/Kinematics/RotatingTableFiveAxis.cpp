@@ -43,22 +43,31 @@ namespace Kinematics {
         constexpr float to_degrees = 180 / M_PI;
 
         // bool calc_ok = false;
+        int negate = 1;
+
+        if (cartesian[B_AXIS] < 0) {
+            negate = -1;
+            cartesian[B_AXIS] *= -1;
+        }
 
         float dx = tan(cartesian[B_AXIS] * to_radians) * cartesian[Z_AXIS], dy = tan(cartesian[A_AXIS] * to_radians) * cartesian[Z_AXIS] ;
         float leng = sqrt(dx * dx + dy * dy);
 
         // laser head tilt
-        float beta = atan2(leng, cartesian[Z_AXIS]); //atan(leng / cartesian[2]);
+        float beta = negate * atan2(leng, cartesian[Z_AXIS]); //atan(leng / cartesian[2]);
         // table rotation
-        float alpha = atan2(dy, dx); // atan(dy / dx);
-        motors[A_AXIS] = -alpha * to_degrees;
+        float alpha = negate * atan2(dy, dx); // atan(dy / dx);
+        if (alpha > 180) {
+            alpha = 360 - alpha;
+        }
+        motors[A_AXIS] = alpha * to_degrees;
         motors[B_AXIS] = beta * to_degrees;
 
         float orx = cartesian[X_AXIS] - _center_x, ry = cartesian[Y_AXIS] - _center_y;
         float rx = cos(alpha) * orx - sin(alpha) * ry;
         ry = sin(alpha) * orx + cos(alpha) * ry;
 
-        float x_offset = tan(beta) * (_focus_offset + _rotation_offset);
+        float x_offset = tan(-beta) * (_focus_offset + _rotation_offset);
 
         //float dz = _rotation_offset - cos(beta) * _rotation_offset;
         float dz = (_rotation_offset + _focus_offset) / cos(beta) - (_rotation_offset + _focus_offset);
@@ -94,7 +103,7 @@ namespace Kinematics {
         float x = motors[X_AXIS];
         float y = motors[Y_AXIS];
 
-        float x_offset = tan(beta) * (_focus_offset + _rotation_offset);
+        float x_offset = tan(-beta) * (_focus_offset + _rotation_offset);
 
         x -= x_offset;
         x -= _center_x;
@@ -104,7 +113,7 @@ namespace Kinematics {
         float ry = -sin(alpha) * x + cos(alpha) * y;
 
         cartesian[X_AXIS] = rx + _center_x;
-        cartesian[Y_AXIS] = ry + _center_y;
+        cartesian[Y_AXIS] = round((ry + _center_y) * 100) / 100;
 
         float leng = tan(beta) * z;
 
