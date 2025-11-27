@@ -22,21 +22,21 @@ namespace Kinematics {
     }
 
     void RotatingTableFiveAxis::init() {
-        //log_info("Kinematic system:" << name() << " roll_offset:" << _roll_offset);
+        this->init_position();
     }
 
     void RotatingTableFiveAxis::init_position() {
-        float angles[MAX_N_AXIS]    = { 0.0, 0.0, 0.0 };
-        float cartesian[MAX_N_AXIS] = { 0.0, 0.0, 0.0 };
-        // Calculate the Z offset at the arm zero angles ...
-        // Z offset is the z distance from the motor axes to the end effector axes at zero angle
-        motors_to_cartesian(cartesian, angles, 3);  // Sets the cartesian values
-        log_info("  Z Offset:" << cartesian[Z_AXIS]);
+        auto n_axis = Axes::_numberAxis;
+        for (size_t axis = 0; axis < n_axis; axis++) {
+            set_motor_steps(axis, 0);  // Set to zeros
+        }
     }
 
 
     // ANYTHING BElOW IS WRONG.
     bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors, float* cartesian) {
+        log_info("RotatingTableFiveAxis::transform_cartesian_to_motors");
+        log_info("cartesian: X:" << cartesian[X_AXIS] << " Y:" << cartesian[Y_AXIS] << " Z:" << cartesian[Z_AXIS] << " A:" << cartesian[A_AXIS] << " B:" << cartesian[B_AXIS]);
         motors[0] = motors[1] = motors[2] = motors[3] = motors[4] = 0;
 
         constexpr float to_radians = M_PI / 180;
@@ -81,12 +81,14 @@ namespace Kinematics {
         motors[Z_AXIS] = _z_height + dz - _focus_offset - cartesian[Z_AXIS] / 2;
         //motors[Z_AXIS] = _offset_z + (cartesian[Z_AXIS] / 2) - dz;
 
-
+        log_info("-> motors: X:" << motors[X_AXIS] << " Y:" << motors[Y_AXIS] << " Z:" << motors[Z_AXIS] << " A:" << motors[A_AXIS] << " B:" << motors[B_AXIS]);
 
         return true;
     }
 
     void RotatingTableFiveAxis::motors_to_cartesian(float* cartesian, float* motors, int n_axis) {
+        log_info("RotatingTableFiveAxis::motors_to_cartesian");
+        log_info("motors:" << " X:" << motors[X_AXIS] << " Y:" << motors[Y_AXIS] << " Z:" << motors[Z_AXIS] << " A:" << motors[A_AXIS] << " B:" << motors[B_AXIS]);
         constexpr float to_radians = M_PI / 180;
         constexpr float to_degrees = 180 / M_PI;
 
@@ -127,6 +129,7 @@ namespace Kinematics {
             cartesian[A_AXIS] = 0;
             cartesian[B_AXIS] = 0;
         }
+        log_info("-> cartesian: X:" << cartesian[X_AXIS] << " Y:" << cartesian[Y_AXIS] << " Z:" << cartesian[Z_AXIS] << " A:" << cartesian[A_AXIS] << " B:" << cartesian[B_AXIS]);
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
