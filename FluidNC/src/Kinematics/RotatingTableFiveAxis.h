@@ -34,6 +34,7 @@ namespace Kinematics {
         void init_position() override;
         void motors_to_cartesian(float* cartesian, float* motors, int n_axis) override;
         bool transform_cartesian_to_motors(float* motors, float* cartesian) override;
+        bool transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian);
 
     private:
         // Offset to align the reported TABLE_AXIS 0° to the physical home switch position.
