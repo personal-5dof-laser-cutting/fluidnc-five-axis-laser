@@ -10,7 +10,7 @@
 
 namespace Kinematics {
 
-    static float last_mpos[MAX_N_AXIS]     = { 0.0 };
+    static float last_mpos[5]     = { 0.0 };
 
     void RotatingTableFiveAxis::group(Configuration::HandlerBase& handler) {
         handler.item("max_z_mm", _max_z);
@@ -25,6 +25,7 @@ namespace Kinematics {
 
     void RotatingTableFiveAxis::init() {
         this->init_position();
+        Cartesian::init();
     }
 
     void RotatingTableFiveAxis::init_position() {
@@ -32,14 +33,15 @@ namespace Kinematics {
         for (size_t axis = 0; axis < n_axis; axis++) {
             set_motor_steps(axis, 0);  // Set to zeros
         }
+        Cartesian::init_position();
     }
 
 
     bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian) {
         log_info("RotatingTableFiveAxis::transform_cartesian_to_motors");
         log_info("cartesian: X:" << cartesian[X_AXIS] << " Y:" << cartesian[Y_AXIS] << " Z:" << cartesian[Z_AXIS] << " A:" << cartesian[A_AXIS] << " B:" << cartesian[B_AXIS]);
-        memset(motors_right, 0, MAX_N_AXIS * sizeof(float));
-        memset(motors_left, 0, MAX_N_AXIS * sizeof(float));
+        memset(motors_right, 0, 5 * sizeof(float));
+        memset(motors_left, 0, 5 * sizeof(float));
 
 
         constexpr float to_radians = M_PI / 180;
@@ -65,8 +67,10 @@ namespace Kinematics {
             alpha = 2 * M_PI - alpha;
         }
 
-        motors_left[A_AXIS] = -alpha * to_degrees;
-        motors_right[A_AXIS] = (-alpha * to_degrees) - 180;
+        const float funfun = -alpha * to_degrees;
+        const float funfunfun = funfun - 180;
+        motors_left[A_AXIS] = std::min(abs(funfun), 360-abs(funfun)) * (funfun < 0 ? -1 : 1);
+        motors_right[A_AXIS] = std::min(abs(funfunfun), 360-abs(funfunfun)) * (funfunfun < 0 ? -1 : 1);
 
         motors_left[B_AXIS] = -beta * to_degrees;
         motors_right[B_AXIS] = beta * to_degrees;
@@ -103,15 +107,19 @@ namespace Kinematics {
 
     // ANYTHING BElOW IS WRONG.
     bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors, float* cartesian) {
-        float* motors_left =  new float[MAX_N_AXIS];
-        float* motors_right = new float[MAX_N_AXIS];
+        float* motors_left =  new float[5];
+        float* motors_right = new float[5];
 
         transform_cartesian_to_motors(motors_left, motors_right, cartesian);
+        log_info("motors_left:" << " X:" << motors_left[X_AXIS] << " Y:" << motors_left[Y_AXIS] << " Z:" << motors_left[Z_AXIS] << " A:" << motors_left[A_AXIS] << " B:" << motors_left[B_AXIS]);
+        log_info("motors_right:" << " X:" << motors_right[X_AXIS] << " Y:" << motors_right[Y_AXIS] << " Z:" << motors_right[Z_AXIS] << " A:" << motors_right[A_AXIS] << " B:" << motors_right[B_AXIS]);
+
         if (abs(motors_left[A_AXIS] - last_mpos[A_AXIS]) < abs(motors_right[A_AXIS] - last_mpos[A_AXIS])) {
-            memcpy(motors, motors_left, MAX_N_AXIS * sizeof(float));
+            memcpy(motors, motors_left, 5 * sizeof(float));
         } else {
-            memcpy(motors, motors_right, MAX_N_AXIS * sizeof(float));
+            memcpy(motors, motors_right, 5 * sizeof(float));
         }
+        return true;
     }
 
     void RotatingTableFiveAxis::motors_to_cartesian(float* cartesian, float* motors, int n_axis) {
@@ -161,6 +169,8 @@ namespace Kinematics {
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
+        log_info("cartesian_to_motors");
+        log_info("target: " << " X:" << target[X_AXIS] << " Y:" << target[Y_AXIS] << " Z:" << target[Z_AXIS] << " A:" << target[A_AXIS] << " B:" << target[B_AXIS]);
         float dx, dy, dz, da, db;
         float motor_angles[5];
 
@@ -182,8 +192,8 @@ namespace Kinematics {
             return false;
         }
 
-        memcpy(last_mpos, motors, sizeof(motors));
-
+        memcpy(last_mpos, motors, 5*sizeof(motors[0]));
+        log_info("-> motors:" << " X:" << motors[X_AXIS] << " Y:" << motors[Y_AXIS] << " Z:" << motors[Z_AXIS] << " A:" << motors[A_AXIS] << " B:" << motors[B_AXIS]);
         return mc_move_motors(motors, pl_data);
     }
 

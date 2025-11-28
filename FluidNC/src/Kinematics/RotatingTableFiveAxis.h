@@ -10,6 +10,7 @@
 #ifndef INC_5AXISFLUIDNC_ROTATINGTABLEFIVEAXIS_H
 #define INC_5AXISFLUIDNC_ROTATINGTABLEFIVEAXIS_H
 
+#include "Cartesian.h"
 #include "Kinematics.h"
 
 // Axis aliases for clarity
@@ -22,9 +23,9 @@
 
 namespace Kinematics {
 
-    class RotatingTableFiveAxis : public KinematicSystem {
+    class RotatingTableFiveAxis : public Cartesian {
     public:
-        explicit RotatingTableFiveAxis(const char* name) : KinematicSystem(name) {}
+        explicit RotatingTableFiveAxis(const char* name) : Cartesian(name) {}
 
         // Configurable parameters
         void group(Configuration::HandlerBase& handler) override;
@@ -35,6 +36,7 @@ namespace Kinematics {
         void motors_to_cartesian(float* cartesian, float* motors, int n_axis) override;
         bool transform_cartesian_to_motors(float* motors, float* cartesian) override;
         bool transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian);
+
 
     private:
         // Offset to align the reported TABLE_AXIS 0° to the physical home switch position.
