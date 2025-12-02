@@ -50,7 +50,6 @@ namespace Kinematics {
         float _center_y = 0;
         float _rotation_offset = 0;
         float _z_height = 0;
-        bool is_homing = false;
     };
 
 }  // namespace Kinematics

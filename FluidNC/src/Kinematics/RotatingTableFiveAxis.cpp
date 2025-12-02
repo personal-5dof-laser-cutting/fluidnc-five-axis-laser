@@ -85,8 +85,8 @@ namespace Kinematics {
 
         const float funfun    = -alpha * to_degrees;
         const float funfunfun = funfun - 180;
-        motors_left[A_AXIS]   = std::min(abs(funfun), 360 - abs(funfun)) * (funfun < 0 ? -1 : 1);
-        motors_right[A_AXIS]  = std::min(abs(funfunfun), 360 - abs(funfunfun)) * (funfunfun < 0 ? -1 : 1);
+        motors_left[A_AXIS]   = -std::min(abs(funfun), 360 - abs(funfun)) * (funfun < 0 ? -1 : 1);
+        motors_right[A_AXIS]  = -std::min(abs(funfunfun), 360 - abs(funfunfun)) * (funfunfun < 0 ? -1 : 1);
 
         motors_left[B_AXIS]  = -beta * to_degrees;
         motors_right[B_AXIS] = beta * to_degrees;
@@ -145,13 +145,14 @@ namespace Kinematics {
         if (state_is(State::Homing)) {
             return Cartesian::motors_to_cartesian(cartesian, motors, n_axis);
         }
+
         log_info("RotatingTableFiveAxis::motors_to_cartesian");
         log_info("motors:" << " X:" << motors[X_AXIS] << " Y:" << motors[Y_AXIS] << " Z:" << motors[Z_AXIS] << " A:" << motors[A_AXIS]
                            << " B:" << motors[B_AXIS]);
         constexpr float to_radians = M_PI / 180;
         constexpr float to_degrees = 180 / M_PI;
 
-        float alpha = -motors[A_AXIS] * to_radians, beta = -motors[B_AXIS] * to_radians;
+        float alpha = motors[A_AXIS] * to_radians, beta = -motors[B_AXIS] * to_radians;
 
         //float dz = _rotation_offset - cos(beta) * _rotation_offset;
         float dz = (_rotation_offset + _focus_offset) / cos(beta) - (_rotation_offset + _focus_offset);
