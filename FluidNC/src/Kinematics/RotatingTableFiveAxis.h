@@ -25,20 +25,21 @@ namespace Kinematics {
 
     class RotatingTableFiveAxis : public Cartesian {
     public:
-        explicit RotatingTableFiveAxis(const char* name) : Cartesian(name) {}
+        explicit RotatingTableFiveAxis(const char* name) : Cartesian(name) {
+
+        }
 
         // Configurable parameters
         void group(Configuration::HandlerBase& handler) override;
-
         bool cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) override;
         void init() override;
         void init_position() override;
         void motors_to_cartesian(float* cartesian, float* motors, int n_axis) override;
         bool transform_cartesian_to_motors(float* motors, float* cartesian) override;
-        bool transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian);
-
+        bool kinematics_homing(AxisMask& axisMask) override;
 
     private:
+        bool transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian);
         // Offset to align the reported TABLE_AXIS 0° to the physical home switch position.
         // Units: degrees (same units as the rotary axis is configured to use).
         float _max_z = 0.0f;
@@ -49,6 +50,7 @@ namespace Kinematics {
         float _center_y = 0;
         float _rotation_offset = 0;
         float _z_height = 0;
+        bool is_homing = false;
     };
 
 }  // namespace Kinematics
