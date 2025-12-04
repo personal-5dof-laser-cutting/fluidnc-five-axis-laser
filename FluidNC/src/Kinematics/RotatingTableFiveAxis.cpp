@@ -22,24 +22,6 @@ namespace Kinematics {
         handler.item("center_y", _center_y);
         handler.item("rotation_offset", _rotation_offset);
         handler.item("z_height", _z_height);
-        // idea: hook into after homing by setting a flag for when state_is toggles. Then:
-        /*
-        *            int32_t steps = mpos_to_steps(_homing_mpos, axis);
-            set_motor_steps(axis, steps);
-            with
-        auto axes   = config->_axes;
-        for (size_t axis = 0; axis < n_axis; axis++) {
-            if (bitnum_is_true(_cycleAxes, axis)) {
-                auto homing = axes->_axis[axis]->_homing;
-                if (homing) {
-                    set_axis_homed(axis);
-                    mpos[axis] = homing->_mpos;
-                    homedAxes += axes->axisName(axis);
-                }
-            }
-        }
-         *
-         */
     }
 
     void RotatingTableFiveAxis::init() {
@@ -82,11 +64,8 @@ namespace Kinematics {
         if (alpha > M_PI) {
             alpha = 2 * M_PI - alpha;
         }
-
-        const float funfun    = -alpha * to_degrees;
-        const float funfunfun = funfun - 180;
-        motors_left[A_AXIS]   = -std::min(abs(funfun), 360 - abs(funfun)) * (funfun < 0 ? -1 : 1);
-        motors_right[A_AXIS]  = -std::min(abs(funfunfun), 360 - abs(funfunfun)) * (funfunfun < 0 ? -1 : 1);
+        motors_left[A_AXIS]  = -alpha * to_degrees;
+        motors_right[A_AXIS] = motors_left[A_AXIS] - 180;
 
         motors_left[B_AXIS]  = -beta * to_degrees;
         motors_right[B_AXIS] = beta * to_degrees;
@@ -118,26 +97,51 @@ namespace Kinematics {
 
         return true;
     }
+    float angle_dist(float pos, float dest){
+        pos = fmodf(pos, 360.0f);
+        dest = fmodf(dest, 360.0f);
+        float diff = dest - pos;
+        if (diff > 180.0f) diff -= 360.0f;
+        else if (diff < -180.0f) diff += 360.0f;
+
+        return diff;
+    }
+
+
+    void shortest_move(float* pos, float* left, float* right){
+        while (pos[A_AXIS] < 0) pos[A_AXIS] += 360.0f;
+        while (left[A_AXIS] < 0) left[A_AXIS] += 360.0f;
+        while (right[A_AXIS] < 0) right[A_AXIS] += 360.0f;
+
+        float adl = angle_dist(pos[A_AXIS], left[A_AXIS]);
+        float adr = angle_dist(pos[A_AXIS], right[A_AXIS]);
+        log_info("left: " << left[A_AXIS] << " right:" << right[A_AXIS]);
+        log_info("pos: " << pos[A_AXIS]);
+        log_info("adl: " << adl << " adr:" << adr);
+        if (abs(adl) < abs(adr)){
+            log_info("Went for left")
+            left[A_AXIS] = pos[A_AXIS] + adl;
+            memcpy(pos, left, 5 * sizeof(pos[0]));
+        }else{
+            log_info("Went for right")
+            right[A_AXIS] = pos[A_AXIS] + adr;
+            memcpy(pos, right, 5 * sizeof(pos[0]));
+        }
+    }
+
 
     // ANYTHING BElOW IS WRONG.
     bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors, float* cartesian) {
         if (state_is(State::Homing)) {
             return Cartesian::transform_cartesian_to_motors(motors, cartesian);
         }
-        float* motors_left  = new float[5];
-        float* motors_right = new float[5];
-
+        auto* motors_left  = new float[5];
+        auto* motors_right = new float[5];
         transform_cartesian_to_motors(motors_left, motors_right, cartesian);
-        log_info("motors_left:" << " X:" << motors_left[X_AXIS] << " Y:" << motors_left[Y_AXIS] << " Z:" << motors_left[Z_AXIS]
-                                << " A:" << motors_left[A_AXIS] << " B:" << motors_left[B_AXIS]);
-        log_info("motors_right:" << " X:" << motors_right[X_AXIS] << " Y:" << motors_right[Y_AXIS] << " Z:" << motors_right[Z_AXIS]
-                                 << " A:" << motors_right[A_AXIS] << " B:" << motors_right[B_AXIS]);
-
-        if (abs(motors_left[A_AXIS] - last_mpos[A_AXIS]) < abs(motors_right[A_AXIS] - last_mpos[A_AXIS])) {
-            memcpy(motors, motors_left, 5 * sizeof(float));
-        } else {
-            memcpy(motors, motors_right, 5 * sizeof(float));
-        }
+        shortest_move(last_mpos, motors_left, motors_right);
+        delete[] motors_left;
+        delete[] motors_right;
+        memcpy(motors, last_mpos, 5 * sizeof(motors[0]));
         return true;
     }
 
@@ -146,9 +150,6 @@ namespace Kinematics {
             return Cartesian::motors_to_cartesian(cartesian, motors, n_axis);
         }
 
-        log_info("RotatingTableFiveAxis::motors_to_cartesian");
-        log_info("motors:" << " X:" << motors[X_AXIS] << " Y:" << motors[Y_AXIS] << " Z:" << motors[Z_AXIS] << " A:" << motors[A_AXIS]
-                           << " B:" << motors[B_AXIS]);
         constexpr float to_radians = M_PI / 180;
         constexpr float to_degrees = 180 / M_PI;
 
@@ -189,8 +190,6 @@ namespace Kinematics {
             cartesian[A_AXIS] = 0;
             cartesian[B_AXIS] = 0;
         }
-        log_info("-> cartesian: X:" << cartesian[X_AXIS] << " Y:" << cartesian[Y_AXIS] << " Z:" << cartesian[Z_AXIS]
-                                    << " A:" << cartesian[A_AXIS] << " B:" << cartesian[B_AXIS]);
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
@@ -233,6 +232,7 @@ namespace Kinematics {
     }
 
     bool RotatingTableFiveAxis::kinematics_homing(AxisMask& axisMask) {
+        this->init_position();
         return false;
     }
 }  // namespace Kinematics
