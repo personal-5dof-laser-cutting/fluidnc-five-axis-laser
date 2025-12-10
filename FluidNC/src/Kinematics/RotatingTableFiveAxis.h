@@ -50,6 +50,8 @@ namespace Kinematics {
         float _center_y = 0;
         float _rotation_offset = 0;
         float _z_height = 0;
+        float _max_x = 0.0f;
+        float _max_y = 0.0f;
     };
 
 }  // namespace Kinematics

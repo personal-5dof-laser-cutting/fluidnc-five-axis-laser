@@ -22,6 +22,8 @@ namespace Kinematics {
         handler.item("center_y", _center_y);
         handler.item("rotation_offset", _rotation_offset);
         handler.item("z_height", _z_height);
+        handler.item("max_x", _max_x);
+        handler.item("max_y", _max_y);
     }
 
     void RotatingTableFiveAxis::init() {
@@ -203,6 +205,7 @@ namespace Kinematics {
         float motor_angles[5];
 
         float seq_target[5];
+        memcpy(seq_target, position, 5 * sizeof(float));
         float feed_rate  = pl_data->feed_rate;
         bool  show_error = true;
 
@@ -214,11 +217,29 @@ namespace Kinematics {
         da = target[A_AXIS] - position[A_AXIS];
         db = target[B_AXIS] - position[B_AXIS];
 
+        float segment_count = sqrt(dx * dx + dy * dy) / _kinematic_segment_len_mm;
+
         float motors[5] = { 0 };
+
+        for (int i = 1; i <= segment_count; i++) {
+            seq_target[X_AXIS] += dx / segment_count;
+            seq_target[Y_AXIS] += dy / segment_count;
+            seq_target[Z_AXIS] += dz / segment_count;
+            seq_target[A_AXIS] += da / segment_count;
+            seq_target[B_AXIS] += db / segment_count;
+
+            if (!transform_cartesian_to_motors(motors, seq_target)) {
+                return false;
+            }
+
+            mc_move_motors(motors, pl_data);
+        }
 
         if (!transform_cartesian_to_motors(motors, target)) {
             return false;
         }
+
+
 
         memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
         log_info("-> motors:" << " X:" << motors[X_AXIS] << " Y:" << motors[Y_AXIS] << " Z:" << motors[Z_AXIS] << " A:" << motors[A_AXIS]
