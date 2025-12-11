@@ -37,6 +37,24 @@ namespace Kinematics {
         }
     }
 
+    bool RotatingTableFiveAxis::check_bounds(float* motors) {
+
+        if (abs(motors[B_AXIS]) > _max_angle) {
+            return false;
+        }
+        if (motors[Z_AXIS] < 0 || motors[Z_AXIS] > _max_z) {
+            return false;
+        }
+        if (motors[X_AXIS] < 0 || motors[X_AXIS] > _max_x) {
+            return false;
+        }
+        if (motors[Y_AXIS] < 0 || motors[Y_AXIS] > _max_y) {
+            return false;
+        }
+
+        return true;
+    }
+
     bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian) {
         log_info("RotatingTableFiveAxis::transform_cartesian_to_motors");
         log_info("cartesian: X:" << cartesian[X_AXIS] << " Y:" << cartesian[Y_AXIS] << " Z:" << cartesian[Z_AXIS]
@@ -49,13 +67,14 @@ namespace Kinematics {
 
         // bool calc_ok = false;
         int negate = 1;
+        float b_ax = cartesian[B_AXIS];
 
         if (cartesian[B_AXIS] < 0) {
             negate = -1;
-            cartesian[B_AXIS] *= -1;
+            b_ax *= -1;
         }
 
-        float dx = tan(cartesian[B_AXIS] * to_radians) * cartesian[Z_AXIS], dy = tan(cartesian[A_AXIS] * to_radians) * cartesian[Z_AXIS];
+        float dx = tan(b_ax * to_radians) * cartesian[Z_AXIS], dy = tan(cartesian[A_AXIS] * to_radians) * cartesian[Z_AXIS];
         float leng = sqrt(dx * dx + dy * dy);
 
         // laser head tilt
@@ -110,7 +129,7 @@ namespace Kinematics {
     }
 
 
-    void shortest_move(float* pos, float* left, float* right){
+    bool RotatingTableFiveAxis::shortest_move(float* pos, float* left, float* right){
         while (pos[A_AXIS] < 0) pos[A_AXIS] += 360.0f;
         while (left[A_AXIS] < 0) left[A_AXIS] += 360.0f;
         while (right[A_AXIS] < 0) right[A_AXIS] += 360.0f;
@@ -120,15 +139,19 @@ namespace Kinematics {
         log_info("left: " << left[A_AXIS] << " right:" << right[A_AXIS]);
         log_info("pos: " << pos[A_AXIS]);
         log_info("adl: " << adl << " adr:" << adr);
-        if (abs(adl) < abs(adr)){
+        if (abs(adl) < abs(adr) && check_bounds(left)){
             log_info("Went for left")
             left[A_AXIS] = pos[A_AXIS] + adl;
             memcpy(pos, left, 5 * sizeof(pos[0]));
-        }else{
+            return true;
+        }
+        if (check_bounds(right)) {
             log_info("Went for right")
             right[A_AXIS] = pos[A_AXIS] + adr;
             memcpy(pos, right, 5 * sizeof(pos[0]));
+            return true;
         }
+        return false;
     }
 
 
@@ -140,7 +163,9 @@ namespace Kinematics {
         auto* motors_left  = new float[5];
         auto* motors_right = new float[5];
         transform_cartesian_to_motors(motors_left, motors_right, cartesian);
-        shortest_move(last_mpos, motors_left, motors_right);
+        if (!shortest_move(last_mpos, motors_left, motors_right)) {
+            return false;
+        }
         delete[] motors_left;
         delete[] motors_right;
         memcpy(motors, last_mpos, 5 * sizeof(motors[0]));
