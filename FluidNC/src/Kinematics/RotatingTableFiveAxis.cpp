@@ -40,15 +40,19 @@ namespace Kinematics {
     bool RotatingTableFiveAxis::check_bounds(float* motors) {
 
         if (abs(motors[B_AXIS]) > _max_angle) {
+            log_info("Out of bounds");
             return false;
         }
         if (motors[Z_AXIS] < 0 || motors[Z_AXIS] > _max_z) {
+            log_info("Out of bounds");
             return false;
         }
         if (motors[X_AXIS] < 0 || motors[X_AXIS] > _max_x) {
+            log_info("Out of bounds");
             return false;
         }
         if (motors[Y_AXIS] < 0 || motors[Y_AXIS] > _max_y) {
+            log_info("Out of bounds");
             return false;
         }
 
@@ -230,21 +234,24 @@ namespace Kinematics {
         float motor_angles[5];
 
         float seq_target[5];
-        memcpy(seq_target, position, 5 * sizeof(float));
+        memcpy(seq_target, last_mpos, 5 * sizeof(float));
         float feed_rate  = pl_data->feed_rate;
         bool  show_error = true;
 
         bool calc_ok = true;
+        float motors[5] = { 0 };
 
-        dx = target[X_AXIS] - position[X_AXIS];
-        dy = target[Y_AXIS] - position[Y_AXIS];
-        dz = target[Z_AXIS] - position[Z_AXIS];
-        da = target[A_AXIS] - position[A_AXIS];
-        db = target[B_AXIS] - position[B_AXIS];
+        transform_cartesian_to_motors(motors, target);
+
+        dx = motors[X_AXIS] - seq_target[X_AXIS];
+        dy = motors[Y_AXIS] - seq_target[Y_AXIS];
+        dz = motors[Z_AXIS] - seq_target[Z_AXIS];
+        da = motors[A_AXIS] - seq_target[A_AXIS];
+        db = motors[B_AXIS] - seq_target[B_AXIS];
 
         float segment_count = sqrt(dx * dx + dy * dy) / _kinematic_segment_len_mm;
 
-        float motors[5] = { 0 };
+
 
         for (int i = 1; i <= segment_count; i++) {
             seq_target[X_AXIS] += dx / segment_count;
@@ -253,11 +260,11 @@ namespace Kinematics {
             seq_target[A_AXIS] += da / segment_count;
             seq_target[B_AXIS] += db / segment_count;
 
-            if (!transform_cartesian_to_motors(motors, seq_target)) {
+            if (!check_bounds(seq_target)) {
                 return false;
             }
 
-            mc_move_motors(motors, pl_data);
+            mc_move_motors(seq_target, pl_data);
         }
 
         if (!transform_cartesian_to_motors(motors, target)) {
