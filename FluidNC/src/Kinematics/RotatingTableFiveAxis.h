@@ -20,7 +20,7 @@
 #ifndef ROLL_AXIS
 #define ROLL_AXIS A_AXIS
 #endif
-
+#include "ArduinoEigen.h"
 namespace Kinematics {
 
     class RotatingTableFiveAxis : public Cartesian {
@@ -54,6 +54,8 @@ namespace Kinematics {
         float _z_height = 0;
         float _max_x = 0.0f;
         float _max_y = 0.0f;
+        Eigen::Vector3f _center = Eigen::Vector3f({ 0, 0, 0 });
+
     };
 
 }  // namespace Kinematics
