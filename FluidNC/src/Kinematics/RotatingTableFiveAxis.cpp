@@ -14,7 +14,6 @@ namespace Kinematics {
     static const float to_rad       = M_PI / 180.0f;
     static const float to_deg       = 180.0f / M_PI;
 
-
     void RotatingTableFiveAxis::group(Configuration::HandlerBase& handler) {
         Cartesian::group(handler);
         handler.item("max_z_mm", _max_z);
@@ -63,58 +62,57 @@ namespace Kinematics {
     }
 
     bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian) {
-        // the point on the cutbed where the laser is supposed to enter
-        Vector3f cut_start({ cartesian[X_AXIS], cartesian[Y_AXIS], cartesian[Z_AXIS] });
+        memset(motors_right, 0, 5 * sizeof(float));
+        memset(motors_left, 0, 5 * sizeof(float));
 
-        // Direction vector of the laser in world space
-        const float a_rad = cartesian[A_AXIS] * to_rad;
-        const float b_rad = cartesian[B_AXIS] * to_rad;
-        Vector3f    cut_dir({ tan(b_rad), tan(a_rad), -1.0f });
-        cut_dir.normalize();
+        constexpr float to_radians = M_PI / 180;
+        constexpr float to_degrees = 180 / M_PI;
 
-        // Solution 1: atan2 gives the primary angle for the table (A_AXIS)
-        float table_angle_1;
-        if (abs(cut_dir[0]) < 1e-6f && abs(cut_dir[1]) < 1e-6f) {
-            // if the direction is nearly vertical, use the current table angle instead since we could use all table angles
-            table_angle_1 = last_mpos[A_AXIS] * to_rad;
-        } else {
-            // atan2(x, y) corresponds to the rotation around Z to align the tilt
-            table_angle_1 = atan2(cut_dir[0], cut_dir[1]);
-        }
+        float height_above_surface = _z_height + _rotation_offset - cartesian[Z_AXIS];
 
-        // Solution 2: The alternative is 180 degrees away
-        float table_angle_2 = table_angle_1 + M_PI;
-        if (table_angle_2 > M_PI)
-            table_angle_2 -= 2.0f * M_PI;
+        Vector3f direction({
+            tan(cartesian[B_AXIS] * to_radians) * height_above_surface,
+            tan(cartesian[A_AXIS] * to_radians) * height_above_surface,
+            -height_above_surface
+        });
 
-        auto calculate_motors = [&](float table_rad, float* m_out) {
-            // Rotate coordinate system so table rotation is accounted for
-            auto rotation_matrix = AngleAxisf(table_rad, Vector3f::UnitZ());
-            // Rotate the position and direction back into the "machine" frame
-            // because the table moves, not the gantry (relatively)
-            Vector3f local_dir = rotation_matrix * cut_dir;
 
-            // Laser head tilt (B_AXIS). Use atan2 to handle the vertical case safely.
-            // local_dir[1] is the new Y offset, local_dir[2] is Z (-1)
-            float head_tilt = atan2(local_dir[1], -local_dir[2]);
+        float table_angle = atan2(direction[1], direction[0]);
 
-            // Calculate focus position
-            Vector3f laser_pos = cut_start - cut_dir * _focus_offset;
-            // rotate the laser position around center
-            Vector3f local_pos = (rotation_matrix * (laser_pos - _center)) + _center;
+        auto rotation_matrix = AngleAxisf(table_angle, -Vector3f::UnitZ());
 
-            m_out[X_AXIS] = local_pos[0];
-            m_out[Y_AXIS] = local_pos[1];
-            // z_height is the height of laser at mpos 0. Higher mpos z: lower laser head in world position. Hence:
-            m_out[Z_AXIS] = _z_height - local_pos[2];
-            m_out[A_AXIS] = table_rad * to_deg;
-            m_out[B_AXIS] = head_tilt * to_deg;
-        };
+        Vector3f rotated_direction = rotation_matrix * direction;
 
-        calculate_motors(table_angle_1, motors_left);
-        calculate_motors(table_angle_2, motors_right);
+        float x_offset = rotated_direction[0];
+
+        Vector3f position({cartesian[X_AXIS], cartesian[Y_AXIS], 0});
+        Vector3f center_position({_center_x, _center_y, 0});
+
+        Vector3f rotated_position = rotation_matrix * (position - center_position) + center_position;
+        auto rotation_right = AngleAxisf(M_PI, -Vector3f::UnitZ());
+
+        motors_left[X_AXIS] = rotated_position[0] - x_offset;
+        motors_left[Y_AXIS] = rotated_position[1];
+
+        // replace _Z_height with desired distance of rotation center to surface
+        motors_left[Z_AXIS] = (rotated_direction.norm() - (_focus_offset + _rotation_offset));
+        motors_left[A_AXIS] = table_angle * to_degrees;
+        motors_left[B_AXIS] = -atan2(rotated_direction[0], -rotated_direction[2]) * to_degrees;
+
+        Vector3f rotated_position_right = rotation_right * (rotated_position - center_position) + center_position;
+
+        motors_right[X_AXIS] = rotated_position_right[0] + x_offset;
+        motors_right[Y_AXIS] = rotated_position_right[1];
+
+        motors_right[Z_AXIS] = motors_left[Z_AXIS];
+        motors_right[A_AXIS] = (table_angle) * to_degrees + 180;
+        if (motors_right[A_AXIS] >= 360)
+            motors_right[A_AXIS] = motors_right[A_AXIS] - 360;
+        motors_right[B_AXIS] = -motors_left[B_AXIS];
+
         return true;
     }
+
     float angle_dist(float pos, float dest) {
         pos        = fmodf(pos, 360.0f);
         dest       = fmodf(dest, 360.0f);
@@ -128,25 +126,32 @@ namespace Kinematics {
     }
 
     bool RotatingTableFiveAxis::shortest_move(float* pos, float* left, float* right) {
-        while (pos[A_AXIS] < 0)
-            pos[A_AXIS] += 360.0f;
         while (left[A_AXIS] < 0)
             left[A_AXIS] += 360.0f;
         while (right[A_AXIS] < 0)
             right[A_AXIS] += 360.0f;
 
+        log_info("Input pos: X" << pos[X_AXIS] << " Y: " << pos[Y_AXIS] << " A: " << pos[A_AXIS] << " B:" << pos[B_AXIS]);
+        log_info("Input left: X" << left[X_AXIS] << " Y: " << left[Y_AXIS] << " A: " << left[A_AXIS] << " B:" << left[B_AXIS] << " bounds: " << check_bounds(left));
+        log_info("Input right: X" << right[X_AXIS] << " Y: " << right[Y_AXIS] << " A: " << right[A_AXIS] << " B:" << right[B_AXIS] << " bounds: " << check_bounds(right));
+
         float adl = angle_dist(pos[A_AXIS], left[A_AXIS]);
         float adr = angle_dist(pos[A_AXIS], right[A_AXIS]);
-        if (abs(adl) < abs(adr) && check_bounds(left)) {
-            left[A_AXIS] = pos[A_AXIS] + adl;
-            memcpy(pos, left, 5 * sizeof(pos[0]));
-            return true;
+        if (abs(adl) < abs(adr) || !check_bounds(right)) {
+            if (check_bounds(left)) {
+                left[A_AXIS] = pos[A_AXIS] + adl;
+                log_info("Took left with turn dist:" << adl)
+                memcpy(pos, left, 5 * sizeof(pos[0]));
+                return true;
+            }
         }
         if (check_bounds(right)) {
             right[A_AXIS] = pos[A_AXIS] + adr;
+            log_info("Took right with turn dist:" << adr)
             memcpy(pos, right, 5 * sizeof(pos[0]));
             return true;
         }
+        log_info("All out of bounds... Cannot move to target.");
         return false;
     }
 
@@ -162,6 +167,7 @@ namespace Kinematics {
         }
         delete[] motors_left;
         delete[] motors_right;
+        log_info("Motor target: A:" << last_mpos[A_AXIS] << ", B: " << last_mpos[B_AXIS]);
         memcpy(motors, last_mpos, 5 * sizeof(motors[0]));
         return true;
     }
@@ -170,23 +176,47 @@ namespace Kinematics {
         if (state_is(State::Homing)) {
             return Cartesian::motors_to_cartesian(cartesian, motors, n_axis);
         }
-        // the current position of the head, in rotated world space
-        Vector3f rotated_pos({ motors[X_AXIS], motors[Y_AXIS], _z_height - motors[Z_AXIS] });
-        // rotation matrix to rotate back to real world space
-        auto rotation_matrix = AngleAxisf(-motors[A_AXIS] * to_rad, Vector3f::UnitZ());
 
-        // rotate to real positon, around table center
-        auto world_laser_pos = (rotation_matrix * (rotated_pos - _center)) + _center;
-        // direction vector of the laser in world space
-        auto world_laser_dir = (rotation_matrix * Vector3f({ 0, motors[A_AXIS] * to_rad, -1.0f })).normalized();
-        // cut entry in world space
-        auto cut_start = world_laser_pos + world_laser_dir * _focus_offset;
+        constexpr float to_radians = M_PI / 180;
+        constexpr float to_degrees = 180 / M_PI;
 
-        cartesian[X_AXIS] = cut_start[0];
-        cartesian[Y_AXIS] = cut_start[1];
-        cartesian[Z_AXIS] = cut_start[2];
-        cartesian[A_AXIS] = world_laser_dir[1] * to_deg;
-        cartesian[B_AXIS] = world_laser_dir[0] * to_deg;
+        float alpha = motors[A_AXIS] * to_radians, beta = -motors[B_AXIS] * to_radians;
+
+        //float dz = _rotation_offset - cos(beta) * _rotation_offset;
+        float dz = (_rotation_offset + _focus_offset) / cos(beta) - (_rotation_offset + _focus_offset);
+
+        float z = motors[Z_AXIS] - _z_height - dz + _focus_offset;
+        z *= -2;
+
+        cartesian[Z_AXIS] = z;
+
+        float x = motors[X_AXIS];
+        float y = motors[Y_AXIS];
+
+        float x_offset = tan(-beta) * (_focus_offset + _rotation_offset);
+
+        x -= x_offset;
+        x -= _center_x;
+        y -= _center_y;
+
+        float rx = cos(alpha) * x + sin(alpha) * y;
+        float ry = -sin(alpha) * x + cos(alpha) * y;
+
+        cartesian[X_AXIS] = rx + _center_x;
+        cartesian[Y_AXIS] = round((ry + _center_y) * 100) / 100;
+
+        float leng = tan(beta) * z;
+
+        float dy = sin(alpha) * leng;
+        float dx = cos(alpha) * leng;
+
+        cartesian[A_AXIS] = atan2(dy, z) * to_degrees;
+        cartesian[B_AXIS] = atan2(dx, z) * to_degrees;
+
+        if (z == 0) {
+            cartesian[A_AXIS] = 0;
+            cartesian[B_AXIS] = 0;
+        }
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
