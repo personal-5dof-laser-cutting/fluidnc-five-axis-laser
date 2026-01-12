@@ -68,8 +68,10 @@ namespace Kinematics {
         constexpr float to_radians = M_PI / 180;
         constexpr float to_degrees = 180 / M_PI;
 
+        // distance from rotation center of laser head to surface of work piece
         float height_above_surface = _z_height + _rotation_offset - cartesian[Z_AXIS];
 
+        // stores direction and distance of laser head rotation center to surface
         Vector3f direction({
             tan(cartesian[B_AXIS] * to_radians) * height_above_surface,
             tan(cartesian[A_AXIS] * to_radians) * height_above_surface,
@@ -79,10 +81,18 @@ namespace Kinematics {
 
         float table_angle = atan2(direction[1], direction[0]);
 
+        // when the cut isn't angled we don't need a specific table rotation
+        // choosing the last table angle saves time
+        if (abs(cartesian[A_AXIS]) < 1e-6 && abs(cartesian[B_AXIS]) < 1e-6) {
+            table_angle = last_mpos[A_AXIS] * to_radians;
+        }
+
         auto rotation_matrix = AngleAxisf(table_angle, -Vector3f::UnitZ());
 
+        // rotating the direction vector translates A and B angles into a single angle
         Vector3f rotated_direction = rotation_matrix * direction;
 
+        // direction has exact length to hit surface, x value stores exact offset
         float x_offset = rotated_direction[0];
 
         Vector3f position({cartesian[X_AXIS], cartesian[Y_AXIS], 0});
@@ -94,11 +104,14 @@ namespace Kinematics {
         motors_left[X_AXIS] = rotated_position[0] - x_offset;
         motors_left[Y_AXIS] = rotated_position[1];
 
-        // replace _Z_height with desired distance of rotation center to surface
+        // rotated_direction.norm() would move laser head rotation center directly onto the surface
+        // subtracting _rotation_offset, we'd have the nozzle directly on the surface
+        // also subtracting the _focus_offset puts the focus point on the surface
         motors_left[Z_AXIS] = (rotated_direction.norm() - (_focus_offset + _rotation_offset));
         motors_left[A_AXIS] = table_angle * to_degrees;
         motors_left[B_AXIS] = -atan2(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
+        // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = rotation_right * (rotated_position - center_position) + center_position;
 
         motors_right[X_AXIS] = rotated_position_right[0] + x_offset;
@@ -126,6 +139,7 @@ namespace Kinematics {
     }
 
     bool RotatingTableFiveAxis::shortest_move(float* pos, float* left, float* right) {
+        // normalize to positive angles [0, 360]
         while (left[A_AXIS] < 0)
             left[A_AXIS] += 360.0f;
         while (right[A_AXIS] < 0)
@@ -137,8 +151,12 @@ namespace Kinematics {
 
         float adl = angle_dist(pos[A_AXIS], left[A_AXIS]);
         float adr = angle_dist(pos[A_AXIS], right[A_AXIS]);
+
+        // left more optimal or right not possible
         if (abs(adl) < abs(adr) || !check_bounds(right)) {
             if (check_bounds(left)) {
+                // adding angle distance to turn in the right direction
+                // from 355° to 5° should rotate 10° to '365°' and not -350° to 5°
                 left[A_AXIS] = pos[A_AXIS] + adl;
                 log_info("Took left with turn dist:" << adl)
                 memcpy(pos, left, 5 * sizeof(pos[0]));
@@ -159,6 +177,8 @@ namespace Kinematics {
         if (state_is(State::Homing)) {
             return Cartesian::transform_cartesian_to_motors(motors, cartesian);
         }
+
+        // 2 possible motorpositions (180° rotated)
         auto* motors_left  = new float[5];
         auto* motors_right = new float[5];
         transform_cartesian_to_motors(motors_left, motors_right, cartesian);
@@ -229,6 +249,7 @@ namespace Kinematics {
         if (!transform_cartesian_to_motors(motors, target)) {
             return false;
         }
+        // storing last motor positions for shortest move calculations
         memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
         return mc_move_motors(motors, pl_data);
     }
