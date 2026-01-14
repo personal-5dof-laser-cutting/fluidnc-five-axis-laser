@@ -42,19 +42,24 @@ namespace Kinematics {
 
     bool RotatingTableFiveAxis::check_bounds(float* motors) {
         if (abs(motors[B_AXIS]) > _max_angle) {
-            log_info("Out of bounds");
+            log_info(_max_angle);
+            log_info("Out of bounds angle");
+            log_info(motors[B_AXIS]);
             return false;
         }
         if (motors[Z_AXIS] < 0 || motors[Z_AXIS] > _max_z) {
-            log_info("Out of bounds");
+            log_info("Out of bounds z");
+            log_info(motors[Z_AXIS]);
             return false;
         }
         if (motors[X_AXIS] < 0 || motors[X_AXIS] > _max_x) {
-            log_info("Out of bounds");
+            log_info("Out of bounds x");
+            log_info(motors[X_AXIS]);
             return false;
         }
         if (motors[Y_AXIS] < 0 || motors[Y_AXIS] > _max_y) {
-            log_info("Out of bounds");
+            log_info("Out of bounds y");
+            log_info(motors[Y_AXIS]);
             return false;
         }
 
