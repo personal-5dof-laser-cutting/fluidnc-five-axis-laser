@@ -14,8 +14,8 @@ constexpr float to_degrees = 180 / M_PI;
 using namespace Eigen;
 namespace Kinematics {
 
-    static float last_mpos[5] = {};
-    static bool is_homing_pos = false;
+    static float last_mpos[5]  = {};
+    static bool  is_homing_pos = false;
 
     void RotatingTableFiveAxis::group(Configuration::HandlerBase& handler) {
         Cartesian::group(handler);
@@ -176,47 +176,41 @@ namespace Kinematics {
         if (state_is(State::Homing)) {
             return Cartesian::motors_to_cartesian(cartesian, motors, n_axis);
         }
+        float table_angle = motors[A_AXIS] * to_radians;
+        float b_angle_rad = -motors[B_AXIS] * to_radians;
 
+        // The length of the direction vector was: motors[Z] + _focus_offset + _rotation_offset
+        float length = motors[Z_AXIS] + _focus_offset + _rotation_offset;
 
-        float alpha = motors[A_AXIS] * to_radians;
-        float beta  = -motors[B_AXIS] * to_radians;
+        // Recover the rotated direction vector
+        // In forward: motors[B] = -atan2(rotated_direction[0], -rotated_direction[2])
+        // And length = sqrt(x^2 + y^2 + z^2). Since it's a "rotated" vector in a 2D tilt plane:
+        Vector3f rotated_direction;
+        rotated_direction[0] = length * sinf(b_angle_rad);
+        rotated_direction[1] = 0;  // The rotation matrix * direction collapsed tilt into XZ plane
+        rotated_direction[2] = -length * cosf(b_angle_rad);
 
-        //float dz = _rotation_offset - cos(beta) * _rotation_offset;
-        float dz = (_rotation_offset + _focus_offset) / cosf(beta) - (_rotation_offset + _focus_offset);
+        float x_offset = rotated_direction[0];
 
-        float z = -(motors[Z_AXIS] - _z_height - dz + _focus_offset);
+        // Undo the table rotation on the direction vector to find original A and B angles
+        auto     inv_rotation_matrix = AngleAxisf(table_angle, Vector3f::UnitZ());
+        Vector3f direction           = inv_rotation_matrix * rotated_direction;
 
-        cartesian[Z_AXIS] = z;
+        // Recover A and B cartesian angles
+        // direction = { tan(B)*h, tan(A)*h, -h }
+        float height_above_surface = -direction[2];
+        cartesian[B_AXIS]          = atan2f(direction[0], height_above_surface) * to_degrees;
+        cartesian[A_AXIS]          = atan2f(direction[1], height_above_surface) * to_degrees;
+        cartesian[Z_AXIS]          = _z_height + _rotation_offset - height_above_surface;
 
-        float x = motors[X_AXIS];
-        float y = motors[Y_AXIS];
+        // Recover X and Y
+        Vector3f center_position({ _center_x, _center_y, 0 });
+        Vector3f rotated_pos_no_offset({ motors[X_AXIS] + x_offset, motors[Y_AXIS], 0 });
 
-        float x_offset = tanf(-beta) * (_focus_offset + _rotation_offset);
+        Vector3f original_pos = inv_rotation_matrix * (rotated_pos_no_offset - center_position) + center_position;
 
-        x -= x_offset;
-        x -= _center_x;
-        y -= _center_y;
-
-        float rx = cosf(alpha) * x + sinf(alpha) * y;
-        float ry = -sinf(alpha) * x + cosf(alpha) * y;
-
-        cartesian[X_AXIS] = rx + _center_x;
-        cartesian[Y_AXIS] = round((ry + _center_y) * 100) / 100;
-
-        float leng = tanf(beta) * z;
-
-        float dy = sinf(alpha) * leng;
-        float dx = cosf(alpha) * leng;
-
-        cartesian[A_AXIS] = atan2f(dy, z) * to_degrees;
-        cartesian[B_AXIS] = atan2f(dx, z) * to_degrees;
-
-        if (z == 0) {
-            cartesian[A_AXIS] = 0;
-            cartesian[B_AXIS] = 0;
-        }
-        log_info("Inverse kinematics called")
-        log_info("output cartesian: " << cartesian[X_AXIS] << ", " << cartesian[Y_AXIS] << ", " << cartesian[Z_AXIS] << ", " << cartesian[A_AXIS] << ", " << cartesian[B_AXIS]);
+        cartesian[X_AXIS] = original_pos[0];
+        cartesian[Y_AXIS] = original_pos[1];
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
@@ -253,7 +247,7 @@ namespace Kinematics {
             sqrtf(powf(target[X_AXIS] - position[X_AXIS], 2) + powf(target[Y_AXIS] - position[Y_AXIS], 2)) / _kinematic_segment_len_mm;
 
         segment_count = fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS])));
-                /*pl_data->feed_rate = pl_data->feed_rate * segment_count;*/
+        /*pl_data->feed_rate = pl_data->feed_rate * segment_count;*/
 
         // array storing distance of each segment per axis
         float segment_motors[5] = { (target[X_AXIS] - position[X_AXIS]) / segment_count,
@@ -278,23 +272,29 @@ namespace Kinematics {
                 return false;
             }
 
-            // angle difference above threshold -> first turn then cut
-            /*if (pl_data->spindle != SpindleState::Disable && fabsf(last_mpos[A_AXIS] - motors[A_AXIS]) > _angle_threshold) {
+            // angle difference above threshold -> first turn the table, then cut
+            if (pl_data->spindle != SpindleState::Disable && fabsf(last_mpos[A_AXIS] - motors[A_AXIS]) > _angle_threshold) {
+                // save laser state
+                const auto spindleBefore   = pl_data->spindle;
+                const auto motionBefore    = pl_data->motion;
+                const auto floodBefore = (pl_data->coolant.Flood);
+                const auto mistBefore = (pl_data->coolant.Mist);
+
                 // turn laser off
-
-                const auto spindleBefore     = pl_data->spindle;
-                const auto motionBefore     = pl_data->motion;
-
                 pl_data->motion.rapidMotion = true;
                 pl_data->spindle            = SpindleState::Disable;
+                pl_data->coolant.Flood      = 0;
+                pl_data->coolant.Mist      = 0;
 
-                last_mpos[A_AXIS]           = motors[A_AXIS];
-                mc_move_motors(last_mpos, pl_data);
+                // move
 
                 // restore laser state
                 pl_data->motion  = motionBefore;
                 pl_data->spindle = spindleBefore;
-            }*/
+                pl_data->coolant.Flood = floodBefore;
+                pl_data->coolant.Mist = mistBefore;
+            }
+
             // move current segment
             memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
             mc_move_motors(motors, pl_data);
