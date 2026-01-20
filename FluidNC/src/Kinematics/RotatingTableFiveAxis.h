@@ -37,11 +37,11 @@ namespace Kinematics {
         void motors_to_cartesian(float* cartesian, float* motors, int n_axis) override;
         bool transform_cartesian_to_motors(float* motors, float* cartesian) override;
         bool kinematics_homing(AxisMask& axisMask) override;
-        bool check_bounds(float* motors);
+        bool check_and_clamp_bounds(float* motors) const;
         bool shortest_move(float* pos, float* left, float* right);
 
     private:
-        bool transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian);
+        bool transform_cartesian_to_motors(float* motors_left, float* motors_right, const float* cartesian) const;
         // Offset to align the reported TABLE_AXIS 0° to the physical home switch position.
         // Units: degrees (same units as the rotary axis is configured to use).
         float _max_z = 0.0f;
@@ -54,6 +54,7 @@ namespace Kinematics {
         float _z_height = 0;
         float _max_x = 0.0f;
         float _max_y = 0.0f;
+        float _angle_threshold = 0.0f;
         Eigen::Vector3f _center = Eigen::Vector3f({ 0, 0, 0 });
 
     };

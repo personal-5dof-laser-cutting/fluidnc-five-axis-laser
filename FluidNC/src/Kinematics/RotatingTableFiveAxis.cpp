@@ -7,12 +7,15 @@
 #include "../Machine/MachineConfig.h"
 #include <cmath>
 #include <ArduinoEigen.h>
+
+constexpr float to_radians = M_PI / 180;
+constexpr float to_degrees = 180 / M_PI;
+
 using namespace Eigen;
 namespace Kinematics {
 
-    static float       last_mpos[5] = { 0.0 };
-    static const float to_rad       = M_PI / 180.0f;
-    static const float to_deg       = 180.0f / M_PI;
+    static float last_mpos[5] = {};
+    static bool is_homing_pos = false;
 
     void RotatingTableFiveAxis::group(Configuration::HandlerBase& handler) {
         Cartesian::group(handler);
@@ -26,6 +29,7 @@ namespace Kinematics {
         handler.item("z_height", _z_height);
         handler.item("max_x", _max_x);
         handler.item("max_y", _max_y);
+        handler.item("angle_threshold", _angle_threshold);
     }
 
     void RotatingTableFiveAxis::init() {
@@ -40,55 +44,36 @@ namespace Kinematics {
         }
     }
 
-    bool RotatingTableFiveAxis::check_bounds(float* motors) {
-        if (abs(motors[B_AXIS]) > _max_angle) {
-            log_info(_max_angle);
-            log_info("Out of bounds angle");
-            log_info(motors[B_AXIS]);
-            return false;
-        }
-        if (motors[Z_AXIS] < 0 || motors[Z_AXIS] > _max_z) {
-            log_info("Out of bounds z");
-            log_info(motors[Z_AXIS]);
-            return false;
-        }
-        if (motors[X_AXIS] < 0 || motors[X_AXIS] > _max_x) {
-            log_info("Out of bounds x");
-            log_info(motors[X_AXIS]);
-            return false;
-        }
-        if (motors[Y_AXIS] < 0 || motors[Y_AXIS] > _max_y) {
-            log_info("Out of bounds y");
-            log_info(motors[Y_AXIS]);
-            return false;
-        }
+    bool RotatingTableFiveAxis::check_and_clamp_bounds(float* motors) const {
+        // z-clamping
+        if (motors[Z_AXIS] < 0)
+            motors[Z_AXIS] = 0;
+        if (motors[Z_AXIS] > _max_z)
+            motors[Z_AXIS] = _max_z;
 
+        if (fabsf(motors[B_AXIS]) > _max_angle)
+            return false;
+        if (motors[X_AXIS] < 0 || motors[X_AXIS] > _max_x)
+            return false;
+        if (motors[Y_AXIS] < 0 || motors[Y_AXIS] > _max_y)
+            return false;
         return true;
     }
 
-    bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors_left, float* motors_right, float* cartesian) {
-        memset(motors_right, 0, 5 * sizeof(float));
-        memset(motors_left, 0, 5 * sizeof(float));
-
-        constexpr float to_radians = M_PI / 180;
-        constexpr float to_degrees = 180 / M_PI;
-
+    bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors_left, float* motors_right, const float* cartesian) const {
         // distance from rotation center of laser head to surface of work piece
         float height_above_surface = _z_height + _rotation_offset - cartesian[Z_AXIS];
 
         // stores direction and distance of laser head rotation center to surface
-        Vector3f direction({
-            tan(cartesian[B_AXIS] * to_radians) * height_above_surface,
-            tan(cartesian[A_AXIS] * to_radians) * height_above_surface,
-            -height_above_surface
-        });
+        Vector3f direction({ tanf(cartesian[B_AXIS] * to_radians) * height_above_surface,
+                             tanf(cartesian[A_AXIS] * to_radians) * height_above_surface,
+                             -height_above_surface });
 
-
-        float table_angle = atan2(direction[1], direction[0]);
+        float table_angle = atan2f(direction[1], direction[0]);
 
         // when the cut isn't angled we don't need a specific table rotation
         // choosing the last table angle saves time
-        if (abs(cartesian[A_AXIS]) < 1e-6 && abs(cartesian[B_AXIS]) < 1e-6) {
+        if (fabsf(cartesian[A_AXIS]) < 1e-6 && fabsf(cartesian[B_AXIS]) < 1e-6) {
             table_angle = last_mpos[A_AXIS] * to_radians;
         }
 
@@ -100,11 +85,11 @@ namespace Kinematics {
         // direction has exact length to hit surface, x value stores exact offset
         float x_offset = rotated_direction[0];
 
-        Vector3f position({cartesian[X_AXIS], cartesian[Y_AXIS], 0});
-        Vector3f center_position({_center_x, _center_y, 0});
+        Vector3f position({ cartesian[X_AXIS], cartesian[Y_AXIS], 0 });
+        Vector3f center_position({ _center_x, _center_y, 0 });
 
         Vector3f rotated_position = rotation_matrix * (position - center_position) + center_position;
-        auto rotation_right = AngleAxisf(M_PI, -Vector3f::UnitZ());
+        auto     rotation_right   = AngleAxisf(M_PI, -Vector3f::UnitZ());
 
         motors_left[X_AXIS] = rotated_position[0] - x_offset;
         motors_left[Y_AXIS] = rotated_position[1];
@@ -114,7 +99,7 @@ namespace Kinematics {
         // also subtracting the _focus_offset puts the focus point on the surface
         motors_left[Z_AXIS] = (rotated_direction.norm() - (_focus_offset + _rotation_offset));
         motors_left[A_AXIS] = table_angle * to_degrees;
-        motors_left[B_AXIS] = -atan2(rotated_direction[0], -rotated_direction[2]) * to_degrees;
+        motors_left[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
         // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = rotation_right * (rotated_position - center_position) + center_position;
@@ -123,7 +108,7 @@ namespace Kinematics {
         motors_right[Y_AXIS] = rotated_position_right[1];
 
         motors_right[Z_AXIS] = motors_left[Z_AXIS];
-        motors_right[A_AXIS] = (table_angle) * to_degrees + 180;
+        motors_right[A_AXIS] = (table_angle)*to_degrees + 180;
         if (motors_right[A_AXIS] >= 360)
             motors_right[A_AXIS] = motors_right[A_AXIS] - 360;
         motors_right[B_AXIS] = -motors_left[B_AXIS];
@@ -150,30 +135,25 @@ namespace Kinematics {
         while (right[A_AXIS] < 0)
             right[A_AXIS] += 360.0f;
 
-        log_info("Input pos: X" << pos[X_AXIS] << " Y: " << pos[Y_AXIS] << " A: " << pos[A_AXIS] << " B:" << pos[B_AXIS]);
-        log_info("Input left: X" << left[X_AXIS] << " Y: " << left[Y_AXIS] << " A: " << left[A_AXIS] << " B:" << left[B_AXIS] << " bounds: " << check_bounds(left));
-        log_info("Input right: X" << right[X_AXIS] << " Y: " << right[Y_AXIS] << " A: " << right[A_AXIS] << " B:" << right[B_AXIS] << " bounds: " << check_bounds(right));
-
         float adl = angle_dist(pos[A_AXIS], left[A_AXIS]);
         float adr = angle_dist(pos[A_AXIS], right[A_AXIS]);
 
         // left more optimal or right not possible
-        if (abs(adl) < abs(adr) || !check_bounds(right)) {
-            if (check_bounds(left)) {
+        if (fabsf(adl) < fabsf(adr) || !check_and_clamp_bounds(right)) {
+            if (check_and_clamp_bounds(left)) {
                 // adding angle distance to turn in the right direction
                 // from 355° to 5° should rotate 10° to '365°' and not -350° to 5°
                 left[A_AXIS] = pos[A_AXIS] + adl;
-                log_info("Took left with turn dist:" << adl)
                 memcpy(pos, left, 5 * sizeof(pos[0]));
                 return true;
             }
         }
-        if (check_bounds(right)) {
+        if (check_and_clamp_bounds(right)) {
             right[A_AXIS] = pos[A_AXIS] + adr;
-            log_info("Took right with turn dist:" << adr)
             memcpy(pos, right, 5 * sizeof(pos[0]));
             return true;
         }
+
         log_info("All out of bounds... Cannot move to target.");
         return false;
     }
@@ -183,17 +163,12 @@ namespace Kinematics {
             return Cartesian::transform_cartesian_to_motors(motors, cartesian);
         }
 
-        // 2 possible motorpositions (180° rotated)
-        auto* motors_left  = new float[5];
-        auto* motors_right = new float[5];
+        float motors_left[5]  = {};
+        float motors_right[5] = {};
         transform_cartesian_to_motors(motors_left, motors_right, cartesian);
-        if (!shortest_move(last_mpos, motors_left, motors_right)) {
+        if (!shortest_move(motors, motors_left, motors_right)) {
             return false;
         }
-        delete[] motors_left;
-        delete[] motors_right;
-        log_info("Motor target: A:" << last_mpos[A_AXIS] << ", B: " << last_mpos[B_AXIS]);
-        memcpy(motors, last_mpos, 5 * sizeof(motors[0]));
         return true;
     }
 
@@ -202,61 +177,135 @@ namespace Kinematics {
             return Cartesian::motors_to_cartesian(cartesian, motors, n_axis);
         }
 
-        constexpr float to_radians = M_PI / 180;
-        constexpr float to_degrees = 180 / M_PI;
 
-        float alpha = motors[A_AXIS] * to_radians, beta = -motors[B_AXIS] * to_radians;
+        float alpha = motors[A_AXIS] * to_radians;
+        float beta  = -motors[B_AXIS] * to_radians;
 
         //float dz = _rotation_offset - cos(beta) * _rotation_offset;
-        float dz = (_rotation_offset + _focus_offset) / cos(beta) - (_rotation_offset + _focus_offset);
+        float dz = (_rotation_offset + _focus_offset) / cosf(beta) - (_rotation_offset + _focus_offset);
 
-        float z = motors[Z_AXIS] - _z_height - dz + _focus_offset;
-        z *= -2;
+        float z = -(motors[Z_AXIS] - _z_height - dz + _focus_offset);
 
         cartesian[Z_AXIS] = z;
 
         float x = motors[X_AXIS];
         float y = motors[Y_AXIS];
 
-        float x_offset = tan(-beta) * (_focus_offset + _rotation_offset);
+        float x_offset = tanf(-beta) * (_focus_offset + _rotation_offset);
 
         x -= x_offset;
         x -= _center_x;
         y -= _center_y;
 
-        float rx = cos(alpha) * x + sin(alpha) * y;
-        float ry = -sin(alpha) * x + cos(alpha) * y;
+        float rx = cosf(alpha) * x + sinf(alpha) * y;
+        float ry = -sinf(alpha) * x + cosf(alpha) * y;
 
         cartesian[X_AXIS] = rx + _center_x;
         cartesian[Y_AXIS] = round((ry + _center_y) * 100) / 100;
 
-        float leng = tan(beta) * z;
+        float leng = tanf(beta) * z;
 
-        float dy = sin(alpha) * leng;
-        float dx = cos(alpha) * leng;
+        float dy = sinf(alpha) * leng;
+        float dx = cosf(alpha) * leng;
 
-        cartesian[A_AXIS] = atan2(dy, z) * to_degrees;
-        cartesian[B_AXIS] = atan2(dx, z) * to_degrees;
+        cartesian[A_AXIS] = atan2f(dy, z) * to_degrees;
+        cartesian[B_AXIS] = atan2f(dx, z) * to_degrees;
 
         if (z == 0) {
             cartesian[A_AXIS] = 0;
             cartesian[B_AXIS] = 0;
         }
+        log_info("Inverse kinematics called")
+        log_info("output cartesian: " << cartesian[X_AXIS] << ", " << cartesian[Y_AXIS] << ", " << cartesian[Z_AXIS] << ", " << cartesian[A_AXIS] << ", " << cartesian[B_AXIS]);
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
+        /*
         if (state_is(State::Homing)) {
             return Cartesian::cartesian_to_motors(target, pl_data, position);
         }
 
-        float motors[5] = { 0 };
+        float goal_motor_position[5] = {};
 
+        if (!transform_cartesian_to_motors(goal_motor_position, target)) {
+            return false;
+        }
+        return mc_move_motors(goal_motor_position, pl_data);
+        */
+
+        if (state_is(State::Homing)) {
+            is_homing_pos = true;
+            return Cartesian::cartesian_to_motors(target, pl_data, position);
+        }
+        if (is_homing_pos) {
+            motors_to_cartesian(position, position, 5);
+            is_homing_pos = false;
+        }
+
+        float motors[5] = {};
+        // stores cartesian segments
+        float segment_cart[5] = {};
+        // initialized with position -> adding segments calculates segment target position
+        memcpy(segment_cart, position, 5 * sizeof(motors[0]));
+
+        // segment count calculated from linear moves only may be precise enough
+        float segment_count =
+            sqrtf(powf(target[X_AXIS] - position[X_AXIS], 2) + powf(target[Y_AXIS] - position[Y_AXIS], 2)) / _kinematic_segment_len_mm;
+
+        segment_count = fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS])));
+                /*pl_data->feed_rate = pl_data->feed_rate * segment_count;*/
+
+        // array storing distance of each segment per axis
+        float segment_motors[5] = { (target[X_AXIS] - position[X_AXIS]) / segment_count,
+                                    (target[Y_AXIS] - position[Y_AXIS]) / segment_count,
+                                    (target[Z_AXIS] - position[Z_AXIS]) / segment_count,
+                                    (target[A_AXIS] - position[A_AXIS]) / segment_count,
+                                    (target[B_AXIS] - position[B_AXIS]) / segment_count };
+
+        for (int i = 1; i < segment_count; i++) {
+            // adding segment length to current position
+            segment_cart[X_AXIS] += segment_motors[X_AXIS];
+            segment_cart[Y_AXIS] += segment_motors[Y_AXIS];
+            segment_cart[Z_AXIS] += segment_motors[Z_AXIS];
+            segment_cart[A_AXIS] += segment_motors[A_AXIS];
+            segment_cart[B_AXIS] += segment_motors[B_AXIS];
+
+            /*log_info("Moving to:")
+            log_info("Cartesian: " << segment_cart[X_AXIS] << ", " << segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS]);
+            */
+
+            if (!transform_cartesian_to_motors(motors, segment_cart)) {
+                return false;
+            }
+
+            // angle difference above threshold -> first turn then cut
+            /*if (pl_data->spindle != SpindleState::Disable && fabsf(last_mpos[A_AXIS] - motors[A_AXIS]) > _angle_threshold) {
+                // turn laser off
+
+                const auto spindleBefore     = pl_data->spindle;
+                const auto motionBefore     = pl_data->motion;
+
+                pl_data->motion.rapidMotion = true;
+                pl_data->spindle            = SpindleState::Disable;
+
+                last_mpos[A_AXIS]           = motors[A_AXIS];
+                mc_move_motors(last_mpos, pl_data);
+
+                // restore laser state
+                pl_data->motion  = motionBefore;
+                pl_data->spindle = spindleBefore;
+            }*/
+            // move current segment
+            memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
+            mc_move_motors(motors, pl_data);
+        }
+
+        // kinematics for final move
         if (!transform_cartesian_to_motors(motors, target)) {
             return false;
         }
-        // storing last motor positions for shortest move calculations
-        memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
-        return mc_move_motors(motors, pl_data);
+        mc_move_motors(motors, pl_data);
+        return true;
     }
 
     // Configuration registration
