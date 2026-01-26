@@ -50,14 +50,9 @@ namespace Kinematics {
             motors[Z_AXIS] = 0;
         if (motors[Z_AXIS] > _max_z)
             motors[Z_AXIS] = _max_z;
-
-        if (fabsf(motors[B_AXIS]) > _max_angle)
-            return false;
-        if (motors[X_AXIS] < 0 || motors[X_AXIS] > _max_x)
-            return false;
-        if (motors[Y_AXIS] < 0 || motors[Y_AXIS] > _max_y)
-            return false;
-        return true;
+        const bool out_of_bounds = fabsf(motors[B_AXIS]) > _max_angle || motors[X_AXIS] < 0 || motors[X_AXIS] > _max_x ||
+                                   motors[Y_AXIS] < 0 || motors[Y_AXIS] > _max_y;
+        return !out_of_bounds;
     }
 
     bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors_left, float* motors_right, const float* cartesian) const {
@@ -117,27 +112,19 @@ namespace Kinematics {
     }
 
     float angle_dist(float pos, float dest) {
-        pos        = fmodf(pos, 360.0f);
-        dest       = fmodf(dest, 360.0f);
+        pos        = fmodf(fmodf(pos, 360.0f) + 360.0f, 360.0f);
+        dest       = fmodf(fmodf(dest, 360.0f) + 360.0f, 360.0f);
         float diff = dest - pos;
         if (diff > 180.0f)
             diff -= 360.0f;
-        else if (diff < -180.0f)
+        else if (diff <= -180.0f)
             diff += 360.0f;
-
         return diff;
     }
 
     bool RotatingTableFiveAxis::shortest_move(float* pos, float* left, float* right) {
-        // normalize to positive angles [0, 360]
-        while (left[A_AXIS] < 0)
-            left[A_AXIS] += 360.0f;
-        while (right[A_AXIS] < 0)
-            right[A_AXIS] += 360.0f;
-
         float adl = angle_dist(pos[A_AXIS], left[A_AXIS]);
         float adr = angle_dist(pos[A_AXIS], right[A_AXIS]);
-
         // left more optimal or right not possible
         if (fabsf(adl) < fabsf(adr) || !check_and_clamp_bounds(right)) {
             if (check_and_clamp_bounds(left)) {
@@ -236,7 +223,9 @@ namespace Kinematics {
             is_homing_pos = false;
         }
 
+        // initialize a motors array at last_mpos
         float motors[5] = {};
+        memcpy(motors, last_mpos, 5 * sizeof(motors[0]));
         // stores cartesian segments
         float segment_cart[5] = {};
         // initialized with position -> adding segments calculates segment target position
@@ -255,49 +244,46 @@ namespace Kinematics {
                                     (target[Z_AXIS] - position[Z_AXIS]) / segment_count,
                                     (target[A_AXIS] - position[A_AXIS]) / segment_count,
                                     (target[B_AXIS] - position[B_AXIS]) / segment_count };
+        if (!(pl_data->motion.rapidMotion || pl_data->spindle == SpindleState::Disable)) {
+            for (int i = 1; i < segment_count; i++) {
+                // adding segment length to current position
+                segment_cart[X_AXIS] += segment_motors[X_AXIS];
+                segment_cart[Y_AXIS] += segment_motors[Y_AXIS];
+                segment_cart[Z_AXIS] += segment_motors[Z_AXIS];
+                segment_cart[A_AXIS] += segment_motors[A_AXIS];
+                segment_cart[B_AXIS] += segment_motors[B_AXIS];
+                if (!transform_cartesian_to_motors(motors, segment_cart)) {
+                    return false;
+                }
+                /*
+                // angle difference above threshold -> first turn the table, then cut
+                if (pl_data->spindle != SpindleState::Disable && fabsf(last_mpos[A_AXIS] - motors[A_AXIS]) > _angle_threshold) {
+                    // save laser state
+                    const auto spindleBefore   = pl_data->spindle;
+                    const auto motionBefore    = pl_data->motion;
+                    const auto floodBefore = (pl_data->coolant.Flood);
+                    const auto mistBefore = (pl_data->coolant.Mist);
 
-        for (int i = 1; i < segment_count; i++) {
-            // adding segment length to current position
-            segment_cart[X_AXIS] += segment_motors[X_AXIS];
-            segment_cart[Y_AXIS] += segment_motors[Y_AXIS];
-            segment_cart[Z_AXIS] += segment_motors[Z_AXIS];
-            segment_cart[A_AXIS] += segment_motors[A_AXIS];
-            segment_cart[B_AXIS] += segment_motors[B_AXIS];
+                    // turn laser off
+                    pl_data->motion.rapidMotion = true;
+                    pl_data->spindle            = SpindleState::Disable;
+                    pl_data->coolant.Flood      = 0;
+                    pl_data->coolant.Mist      = 0;
 
-            /*log_info("Moving to:")
-            log_info("Cartesian: " << segment_cart[X_AXIS] << ", " << segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS]);
-            */
+                    // move
 
-            if (!transform_cartesian_to_motors(motors, segment_cart)) {
-                return false;
+                    // restore laser state
+                    pl_data->motion  = motionBefore;
+                    pl_data->spindle = spindleBefore;
+                    pl_data->coolant.Flood = floodBefore;
+                    pl_data->coolant.Mist = mistBefore;
+                }
+                */
+
+                // move current segment
+                memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
+                mc_move_motors(motors, pl_data);
             }
-
-            // angle difference above threshold -> first turn the table, then cut
-            if (pl_data->spindle != SpindleState::Disable && fabsf(last_mpos[A_AXIS] - motors[A_AXIS]) > _angle_threshold) {
-                // save laser state
-                const auto spindleBefore   = pl_data->spindle;
-                const auto motionBefore    = pl_data->motion;
-                const auto floodBefore = (pl_data->coolant.Flood);
-                const auto mistBefore = (pl_data->coolant.Mist);
-
-                // turn laser off
-                pl_data->motion.rapidMotion = true;
-                pl_data->spindle            = SpindleState::Disable;
-                pl_data->coolant.Flood      = 0;
-                pl_data->coolant.Mist      = 0;
-
-                // move
-
-                // restore laser state
-                pl_data->motion  = motionBefore;
-                pl_data->spindle = spindleBefore;
-                pl_data->coolant.Flood = floodBefore;
-                pl_data->coolant.Mist = mistBefore;
-            }
-
-            // move current segment
-            memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
-            mc_move_motors(motors, pl_data);
         }
 
         // kinematics for final move
