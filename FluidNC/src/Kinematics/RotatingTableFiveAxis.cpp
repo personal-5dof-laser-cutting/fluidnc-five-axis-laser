@@ -201,23 +201,12 @@ namespace Kinematics {
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
-        /*
         if (state_is(State::Homing)) {
-            return Cartesian::cartesian_to_motors(target, pl_data, position);
-        }
-
-        float goal_motor_position[5] = {};
-
-        if (!transform_cartesian_to_motors(goal_motor_position, target)) {
-            return false;
-        }
-        return mc_move_motors(goal_motor_position, pl_data);
-        */
-
-        if (state_is(State::Homing)) {
+            // home in cartesian
             is_homing_pos = true;
             return Cartesian::cartesian_to_motors(target, pl_data, position);
         }
+        // for the first call after homing, convert position to cartesian space. It will always be in cartesian space for later calls
         if (is_homing_pos) {
             motors_to_cartesian(position, position, 5);
             is_homing_pos = false;
@@ -226,72 +215,48 @@ namespace Kinematics {
         // initialize a motors array at last_mpos
         float motors[5] = {};
         memcpy(motors, last_mpos, 5 * sizeof(motors[0]));
-        // stores cartesian segments
-        float segment_cart[5] = {};
-        // initialized with position -> adding segments calculates segment target position
-        memcpy(segment_cart, position, 5 * sizeof(motors[0]));
 
-        // segment count calculated from linear moves only may be precise enough
+        // segment count calculated from xy-move distance, and angles, so that resolution is at least 1-per-degree and _kinematic_segment_len_mm for xy.
         float segment_count =
             sqrtf(powf(target[X_AXIS] - position[X_AXIS], 2) + powf(target[Y_AXIS] - position[Y_AXIS], 2)) / _kinematic_segment_len_mm;
 
         segment_count = fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS])));
-        /*pl_data->feed_rate = pl_data->feed_rate * segment_count;*/
+        if (segment_count > 1) {
+            // array storing distance of each segment per axis
+            float move[] = {};
 
-        // array storing distance of each segment per axis
-        float segment_motors[5] = { (target[X_AXIS] - position[X_AXIS]) / segment_count,
-                                    (target[Y_AXIS] - position[Y_AXIS]) / segment_count,
-                                    (target[Z_AXIS] - position[Z_AXIS]) / segment_count,
-                                    (target[A_AXIS] - position[A_AXIS]) / segment_count,
-                                    (target[B_AXIS] - position[B_AXIS]) / segment_count };
-        if (!(pl_data->motion.rapidMotion || pl_data->spindle == SpindleState::Disable)) {
-            for (int i = 1; i < segment_count; i++) {
+            // array we will actually move to
+            float segment_cart[5] = {};
+
+            move[X_AXIS] = target[X_AXIS] - position[X_AXIS];
+            move[Y_AXIS] = target[Y_AXIS] - position[Y_AXIS];
+            move[Z_AXIS] = target[Z_AXIS] - position[Z_AXIS];
+            move[A_AXIS] = target[A_AXIS] - position[A_AXIS];
+            move[B_AXIS] = target[B_AXIS] - position[B_AXIS];
+
+            for (float i = 1; i < segment_count; i++) {
                 // adding segment length to current position
-                segment_cart[X_AXIS] += segment_motors[X_AXIS];
-                segment_cart[Y_AXIS] += segment_motors[Y_AXIS];
-                segment_cart[Z_AXIS] += segment_motors[Z_AXIS];
-                segment_cart[A_AXIS] += segment_motors[A_AXIS];
-                segment_cart[B_AXIS] += segment_motors[B_AXIS];
+                const float p        = i / segment_count;
+                segment_cart[X_AXIS] = position[X_AXIS] + move[X_AXIS] * p;
+                segment_cart[Y_AXIS] = position[Y_AXIS] + move[Y_AXIS] * p;
+                segment_cart[Z_AXIS] = position[Z_AXIS] + move[Z_AXIS] * p;
+                segment_cart[A_AXIS] = position[A_AXIS] + move[A_AXIS] * p;
+                segment_cart[B_AXIS] = position[B_AXIS] + move[B_AXIS] * p;
                 if (!transform_cartesian_to_motors(motors, segment_cart)) {
                     return false;
                 }
-                /*
-                // angle difference above threshold -> first turn the table, then cut
-                if (pl_data->spindle != SpindleState::Disable && fabsf(last_mpos[A_AXIS] - motors[A_AXIS]) > _angle_threshold) {
-                    // save laser state
-                    const auto spindleBefore   = pl_data->spindle;
-                    const auto motionBefore    = pl_data->motion;
-                    const auto floodBefore = (pl_data->coolant.Flood);
-                    const auto mistBefore = (pl_data->coolant.Mist);
-
-                    // turn laser off
-                    pl_data->motion.rapidMotion = true;
-                    pl_data->spindle            = SpindleState::Disable;
-                    pl_data->coolant.Flood      = 0;
-                    pl_data->coolant.Mist      = 0;
-
-                    // move
-
-                    // restore laser state
-                    pl_data->motion  = motionBefore;
-                    pl_data->spindle = spindleBefore;
-                    pl_data->coolant.Flood = floodBefore;
-                    pl_data->coolant.Mist = mistBefore;
-                }
-                */
-
                 // move current segment
                 memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
                 mc_move_motors(motors, pl_data);
             }
         }
 
-        // kinematics for final move
+        // kinematics for final move (to target directly to avoid floating point error)
         if (!transform_cartesian_to_motors(motors, target)) {
             return false;
         }
-        mc_move_motors(motors, pl_data);
-        return true;
+        memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
+        return mc_move_motors(motors, pl_data);
     }
 
     // Configuration registration
