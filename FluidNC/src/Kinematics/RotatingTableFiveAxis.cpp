@@ -5,13 +5,9 @@
 #include "RotatingTableFiveAxis.h"
 
 #include "../Machine/MachineConfig.h"
-#include <cmath>
-#include <ArduinoEigen.h>
+constexpr float to_radians = M_PI / 180.0;
+constexpr float to_degrees = 180.0 / M_PI;
 
-constexpr float to_radians = M_PI / 180;
-constexpr float to_degrees = 180 / M_PI;
-
-using namespace Eigen;
 namespace Kinematics {
 
     static float last_mpos[5]  = {};
@@ -72,19 +68,15 @@ namespace Kinematics {
             table_angle = last_mpos[A_AXIS] * to_radians;
         }
 
-        auto rotation_matrix = AngleAxisf(table_angle, -Vector3f::UnitZ());
-
         // rotating the direction vector translates A and B angles into a single angle
-        Vector3f rotated_direction = rotation_matrix * direction;
+        Vector3f rotated_direction = direction.rotateZ(table_angle);
 
         // direction has exact length to hit surface, x value stores exact offset
-        float x_offset = rotated_direction[0];
-
+        float    x_offset = rotated_direction[0];
         Vector3f position({ cartesian[X_AXIS], cartesian[Y_AXIS], 0 });
         Vector3f center_position({ _center_x, _center_y, 0 });
 
-        Vector3f rotated_position = rotation_matrix * (position - center_position) + center_position;
-        auto     rotation_right   = AngleAxisf(M_PI, -Vector3f::UnitZ());
+        Vector3f rotated_position = (position).rotateZ(table_angle, center_position);
 
         motors_left[X_AXIS] = rotated_position[0] - x_offset;
         motors_left[Y_AXIS] = rotated_position[1];
@@ -97,7 +89,7 @@ namespace Kinematics {
         motors_left[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
         // rotating calculated motors positions by 180° to get second option
-        Vector3f rotated_position_right = rotation_right * (rotated_position - center_position) + center_position;
+        Vector3f rotated_position_right = position.rotateZ(M_PI + table_angle, center_position);
 
         motors_right[X_AXIS] = rotated_position_right[0] + x_offset;
         motors_right[Y_AXIS] = rotated_position_right[1];
@@ -180,8 +172,7 @@ namespace Kinematics {
         float x_offset = rotated_direction[0];
 
         // Undo the table rotation on the direction vector to find original A and B angles
-        auto     inv_rotation_matrix = AngleAxisf(table_angle, Vector3f::UnitZ());
-        Vector3f direction           = inv_rotation_matrix * rotated_direction;
+        Vector3f direction           = rotated_direction.rotateZ(-table_angle);
 
         // Recover A and B cartesian angles
         // direction = { tan(B)*h, tan(A)*h, -h }
@@ -194,7 +185,7 @@ namespace Kinematics {
         Vector3f center_position({ _center_x, _center_y, 0 });
         Vector3f rotated_pos_no_offset({ motors[X_AXIS] + x_offset, motors[Y_AXIS], 0 });
 
-        Vector3f original_pos = inv_rotation_matrix * (rotated_pos_no_offset - center_position) + center_position;
+        Vector3f original_pos = rotated_pos_no_offset.rotateZ(-table_angle, center_position);
 
         cartesian[X_AXIS] = original_pos[0];
         cartesian[Y_AXIS] = original_pos[1];

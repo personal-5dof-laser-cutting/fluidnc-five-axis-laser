@@ -15,19 +15,64 @@
 
 // Axis aliases for clarity
 #ifndef TABLE_AXIS
-#define TABLE_AXIS B_AXIS
+#    define TABLE_AXIS B_AXIS
 #endif
 #ifndef ROLL_AXIS
-#define ROLL_AXIS A_AXIS
+#    define ROLL_AXIS A_AXIS
 #endif
-#include "ArduinoEigen.h"
+#include <cmath>
 namespace Kinematics {
 
     class RotatingTableFiveAxis : public Cartesian {
     public:
-        explicit RotatingTableFiveAxis(const char* name) : Cartesian(name) {
+        explicit RotatingTableFiveAxis(const char* name) : Cartesian(name) {}
 
-        }
+        struct Vector3f {
+            float    x, y, z;
+            Vector3f operator+(const Vector3f& rhs) const { return { x + rhs.x, y + rhs.y, z + rhs.z }; }
+
+            Vector3f operator-(const Vector3f& rhs) const { return { x - rhs.x, y - rhs.y, z - rhs.z }; }
+
+            Vector3f& operator+=(const Vector3f& rhs) {
+                x += rhs.x;
+                y += rhs.y;
+                z += rhs.z;
+                return *this;
+            }
+
+            Vector3f& operator-=(const Vector3f& rhs) {
+                x -= rhs.x;
+                y -= rhs.y;
+                z -= rhs.z;
+                return *this;
+            }
+
+            Vector3f operator-() const {  // unary minus
+                return { -x, -y, -z };
+            }
+
+            float& operator[](const size_t index) {
+                switch (index) {
+                    case 0:
+                        return x;
+                    case 1:
+                        return y;
+                    case 2:
+                        return z;
+                    default:
+                        throw std::out_of_range("Index out of range");
+                }
+            }
+
+            [[nodiscard]] Vector3f rotateZ(const float angle, Vector3f pivot) const { return (*this - pivot).rotateZ(angle) + pivot; }
+            [[nodiscard]] Vector3f rotateZ(const float angle) const {
+                const float angle_ = -angle; // rotate clockwise
+                const float s = sinf(angle_);
+                const float c = cosf(angle_);
+                return { x * c - y * s, x * s + y * c, z };
+            }
+            [[nodiscard]] float norm() const { return sqrtf(x*x + y*y + z*z); }
+        };
 
         // Configurable parameters
         void group(Configuration::HandlerBase& handler) override;
@@ -44,19 +89,18 @@ namespace Kinematics {
         bool transform_cartesian_to_motors(float* motors_left, float* motors_right, const float* cartesian) const;
         // Offset to align the reported TABLE_AXIS 0° to the physical home switch position.
         // Units: degrees (same units as the rotary axis is configured to use).
-        float _max_z = 0.0f;
-        float _focus_offset = 0.0f;
-        float _max_angle = 0.0f;
-        float _kinematic_segment_len_mm = 1.0;
-        float _center_x = 0;
-        float _center_y = 0;
-        float _rotation_offset = 0;
-        float _z_height = 0;
-        float _max_x = 0.0f;
-        float _max_y = 0.0f;
-        float _angle_threshold = 0.0f;
-        Eigen::Vector3f _center = Eigen::Vector3f({ 0, 0, 0 });
-
+        float    _max_z                    = 0.0f;
+        float    _focus_offset             = 0.0f;
+        float    _max_angle                = 0.0f;
+        float    _kinematic_segment_len_mm = 1.0;
+        float    _center_x                 = 0;
+        float    _center_y                 = 0;
+        float    _rotation_offset          = 0;
+        float    _z_height                 = 0;
+        float    _max_x                    = 0.0f;
+        float    _max_y                    = 0.0f;
+        float    _angle_threshold          = 0.0f;
+        Vector3f _center                   = { 0, 0, 0 };
     };
 
 }  // namespace Kinematics
