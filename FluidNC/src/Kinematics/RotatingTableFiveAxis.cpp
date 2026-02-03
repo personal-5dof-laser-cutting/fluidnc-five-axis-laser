@@ -172,7 +172,7 @@ namespace Kinematics {
         float x_offset = rotated_direction[0];
 
         // Undo the table rotation on the direction vector to find original A and B angles
-        Vector3f direction           = rotated_direction.rotateZ(-table_angle);
+        Vector3f direction = rotated_direction.rotateZ(-table_angle);
 
         // Recover A and B cartesian angles
         // direction = { tan(B)*h, tan(A)*h, -h }
@@ -214,7 +214,7 @@ namespace Kinematics {
         segment_count = fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS])));
         if (segment_count > 1) {
             // array storing distance of each segment per axis
-            float move[] = {};
+            float move[5] = {};
 
             // array we will actually move to
             float segment_cart[5] = {};
