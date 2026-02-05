@@ -236,6 +236,46 @@ namespace Kinematics {
                 if (!transform_cartesian_to_motors(motors, segment_cart)) {
                     return false;
                 }
+
+                // segments shouldn't input more than 1 degree changes per axis
+                // output angle change shouldn't exceed 3 degrees
+                // (changes from 60/60 to 61/61 would be 2,975 which is already an 83° angle -> not possible)
+                // more than 3 degrees difference can only happen if left/right change
+                // -> causes b to change sign from one segment to the next
+                // -> z stays same -> nozzle moves into table
+                if (fabsf(motors[B_AXIS] - last_mpos[B_AXIS]) > 3) {
+                    // movement wouldn't be intended by user -> travel move?
+                    // travel move -> segment would essentially be skipped -> cut move?
+                    // last_mpos = right -> travel to last_mpos_left
+                    // <->
+
+                    // turn on travel move
+                    SpindleState st = pl_data->spindle;
+                    auto sm = pl_data->motion;
+                    pl_data->spindle = SpindleState::Disable;
+                    pl_data->motion.rapidMotion = true;
+
+                    float fix_move[5] = {};
+                    fix_move[X_AXIS] = _center_x;
+                    fix_move[Y_AXIS] = _center_y;
+                    fix_move[Z_AXIS] = _z_height + _rotation_offset - target[Z_AXIS];
+                    fix_move[A_AXIS] = (motors[A_AXIS] + last_mpos[A_AXIS]) * 0.5f;
+                    fix_move[B_AXIS] = 0;
+
+                    mc_move_motors(fix_move, pl_data);
+
+                    fix_move[X_AXIS] = 2 * _center_x - last_mpos[X_AXIS];
+                    fix_move[Y_AXIS] = 2 * _center_y - last_mpos[Y_AXIS];
+                    fix_move[Z_AXIS] = last_mpos[Z_AXIS];
+                    fix_move[A_AXIS] = motors[A_AXIS];
+                    fix_move[B_AXIS] = -last_mpos[B_AXIS];
+
+                    mc_move_motors(fix_move, pl_data);
+
+                    // restore laser state
+                    pl_data->spindle = st;
+                    pl_data->motion = sm;
+                }
                 // move current segment
                 memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
                 mc_move_motors(motors, pl_data);
