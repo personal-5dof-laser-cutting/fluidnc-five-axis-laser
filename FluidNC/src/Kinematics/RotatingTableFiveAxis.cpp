@@ -145,10 +145,7 @@ namespace Kinematics {
         float motors_left[5]  = {};
         float motors_right[5] = {};
         transform_cartesian_to_motors(motors_left, motors_right, cartesian);
-        if (!shortest_move(motors, motors_left, motors_right)) {
-            return false;
-        }
-        return true;
+        return shortest_move(motors, motors_left, motors_right);
     }
 
     void RotatingTableFiveAxis::motors_to_cartesian(float* cartesian, float* motors, int n_axis) {
@@ -191,27 +188,42 @@ namespace Kinematics {
         cartesian[Y_AXIS] = original_pos[1];
     }
 
+    bool move_motors(float* target, plan_line_data_t* pl_data) {
+        memcpy(last_mpos, target, 5 * sizeof(last_mpos[0]));
+        log_info("Moving: " << target[X_AXIS] << ", " << target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS])
+        return mc_move_motors(target, pl_data);
+    }
+
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
         if (state_is(State::Homing)) {
             // home in cartesian
             is_homing_pos = true;
             return Cartesian::cartesian_to_motors(target, pl_data, position);
         }
-        // for the first call after homing, convert position to cartesian space. It will always be in cartesian space for later calls
-        if (is_homing_pos) {
-            motors_to_cartesian(position, position, 5);
-            is_homing_pos = false;
-        }
-
         // initialize a motors array at last_mpos
         float motors[5] = {};
         memcpy(motors, last_mpos, 5 * sizeof(motors[0]));
+
+        // for the first call after homing, move to a sane position before continuing
+        if (is_homing_pos) {
+            position[X_AXIS] = _center_x;
+            position[Y_AXIS] = _center_y;
+            position[A_AXIS] = position[B_AXIS] = 0;
+            position[Z_AXIS] = target[Z_AXIS];
+            is_homing_pos = false;
+            if (!transform_cartesian_to_motors(motors, position)) {
+                return false;
+            }
+            move_motors(motors, pl_data);
+        }
 
         // segment count calculated from xy-move distance, and angles, so that resolution is at least 1-per-degree and _kinematic_segment_len_mm for xy.
         float segment_count =
             sqrtf(powf(target[X_AXIS] - position[X_AXIS], 2) + powf(target[Y_AXIS] - position[Y_AXIS], 2)) / _kinematic_segment_len_mm;
 
         segment_count = fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS])));
+        log_info("Cartesian goal: " << target[X_AXIS] << ", " <<  target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS])
+
         if (segment_count > 1) {
             // array storing distance of each segment per axis
             float move[5] = {};
@@ -233,6 +245,7 @@ namespace Kinematics {
                 segment_cart[Z_AXIS] = position[Z_AXIS] + move[Z_AXIS] * p;
                 segment_cart[A_AXIS] = position[A_AXIS] + move[A_AXIS] * p;
                 segment_cart[B_AXIS] = position[B_AXIS] + move[B_AXIS] * p;
+                log_info("Cartesian segment: " << segment_cart[X_AXIS] << ", " <<  segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS])
                 if (!transform_cartesian_to_motors(motors, segment_cart)) {
                     return false;
                 }
@@ -244,6 +257,7 @@ namespace Kinematics {
                 // -> causes b to change sign from one segment to the next
                 // -> z stays same -> nozzle moves into table
                 if (fabsf(motors[B_AXIS] - last_mpos[B_AXIS]) > 3) {
+                    log_info("Using jonas cool function")
                     // movement wouldn't be intended by user -> travel move?
                     // travel move -> segment would essentially be skipped -> cut move?
                     // last_mpos = right -> travel to last_mpos_left
@@ -262,7 +276,7 @@ namespace Kinematics {
                     fix_move[A_AXIS] = (motors[A_AXIS] + last_mpos[A_AXIS]) * 0.5f;
                     fix_move[B_AXIS] = 0;
 
-                    mc_move_motors(fix_move, pl_data);
+                    move_motors(fix_move, pl_data);
 
                     fix_move[X_AXIS] = 2 * _center_x - last_mpos[X_AXIS];
                     fix_move[Y_AXIS] = 2 * _center_y - last_mpos[Y_AXIS];
@@ -270,15 +284,14 @@ namespace Kinematics {
                     fix_move[A_AXIS] = motors[A_AXIS];
                     fix_move[B_AXIS] = -last_mpos[B_AXIS];
 
-                    mc_move_motors(fix_move, pl_data);
+                    move_motors(fix_move, pl_data);
 
                     // restore laser state
                     pl_data->spindle = st;
                     pl_data->motion = sm;
                 }
                 // move current segment
-                memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
-                mc_move_motors(motors, pl_data);
+                move_motors(motors, pl_data);
             }
         }
 
@@ -286,8 +299,7 @@ namespace Kinematics {
         if (!transform_cartesian_to_motors(motors, target)) {
             return false;
         }
-        memcpy(last_mpos, motors, 5 * sizeof(motors[0]));
-        return mc_move_motors(motors, pl_data);
+        return move_motors(motors, pl_data);
     }
 
     // Configuration registration
