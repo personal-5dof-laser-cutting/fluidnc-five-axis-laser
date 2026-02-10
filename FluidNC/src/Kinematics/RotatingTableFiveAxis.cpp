@@ -272,7 +272,7 @@ namespace Kinematics {
                     float fix_move[5] = {};
                     fix_move[X_AXIS] = _center_x;
                     fix_move[Y_AXIS] = _center_y;
-                    fix_move[Z_AXIS] = _z_height + _rotation_offset - target[Z_AXIS];
+                    fix_move[Z_AXIS] = _z_height - _focus_offset - target[Z_AXIS];
                     fix_move[A_AXIS] = (motors[A_AXIS] + last_mpos[A_AXIS]) * 0.5f;
                     fix_move[B_AXIS] = 0;
 
