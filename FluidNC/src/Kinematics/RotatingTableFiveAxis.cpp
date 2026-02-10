@@ -190,7 +190,7 @@ namespace Kinematics {
 
     bool move_motors(float* target, plan_line_data_t* pl_data) {
         memcpy(last_mpos, target, 5 * sizeof(last_mpos[0]));
-        log_info("Moving: " << target[X_AXIS] << ", " << target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS])
+        log_info("Moving: " << target[X_AXIS] << ", " << target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
         return mc_move_motors(target, pl_data);
     }
 
@@ -222,7 +222,7 @@ namespace Kinematics {
             sqrtf(powf(target[X_AXIS] - position[X_AXIS], 2) + powf(target[Y_AXIS] - position[Y_AXIS], 2)) / _kinematic_segment_len_mm;
 
         segment_count = fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS])));
-        log_info("Cartesian goal: " << target[X_AXIS] << ", " <<  target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS])
+        log_info("Cartesian goal: " << target[X_AXIS] << ", " <<  target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
 
         if (segment_count > 1) {
             // array storing distance of each segment per axis
@@ -245,7 +245,7 @@ namespace Kinematics {
                 segment_cart[Z_AXIS] = position[Z_AXIS] + move[Z_AXIS] * p;
                 segment_cart[A_AXIS] = position[A_AXIS] + move[A_AXIS] * p;
                 segment_cart[B_AXIS] = position[B_AXIS] + move[B_AXIS] * p;
-                log_info("Cartesian segment: " << segment_cart[X_AXIS] << ", " <<  segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS])
+                log_info("Cartesian segment: " << segment_cart[X_AXIS] << ", " <<  segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS]);
                 if (!transform_cartesian_to_motors(motors, segment_cart)) {
                     return false;
                 }
@@ -257,7 +257,7 @@ namespace Kinematics {
                 // -> causes b to change sign from one segment to the next
                 // -> z stays same -> nozzle moves into table
                 if (fabsf(motors[B_AXIS] - last_mpos[B_AXIS]) > 3) {
-                    log_info("Using jonas cool function")
+                    log_info("Using jonas cool function");
                     // movement wouldn't be intended by user -> travel move?
                     // travel move -> segment would essentially be skipped -> cut move?
                     // last_mpos = right -> travel to last_mpos_left
