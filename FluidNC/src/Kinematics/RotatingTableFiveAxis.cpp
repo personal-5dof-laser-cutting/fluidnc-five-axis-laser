@@ -267,7 +267,10 @@ namespace Kinematics {
                     SpindleState st = pl_data->spindle;
                     auto sm = pl_data->motion;
                     pl_data->spindle = SpindleState::Disable;
-                    pl_data->motion.rapidMotion = true;
+                    //pl_data->motion.rapidMotion = true;
+
+                    // height above surface / cosf(b axis) = rotated direction norm
+                    float height_above_surface = _z_height + _rotation_offset - target[Z_AXIS];
 
                     float fix_move[5] = {};
                     fix_move[X_AXIS] = _center_x;
@@ -276,7 +279,12 @@ namespace Kinematics {
                     fix_move[A_AXIS] = (motors[A_AXIS] + last_mpos[A_AXIS]) * 0.5f;
                     fix_move[B_AXIS] = 0;
 
-                    move_motors(fix_move, pl_data);
+                    for (float j = 0.0; j < 2 * fabsf(last_mpos[B_AXIS]); j++) {
+                        fix_move[B_AXIS] = last_mpos[B_AXIS] - j * (last_mpos[B_AXIS] / fabsf(last_mpos[B_AXIS]));
+                        fix_move[Z_AXIS] = height_above_surface / cosf(fix_move[B_AXIS] * to_radians) - (_focus_offset + _rotation_offset);
+
+                        move_motors(fix_move, pl_data);
+                    }
 
                     fix_move[X_AXIS] = 2 * _center_x - last_mpos[X_AXIS];
                     fix_move[Y_AXIS] = 2 * _center_y - last_mpos[Y_AXIS];
