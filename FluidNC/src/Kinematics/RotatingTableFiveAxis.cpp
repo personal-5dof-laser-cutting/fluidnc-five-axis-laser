@@ -73,13 +73,13 @@ namespace Kinematics {
 
         // direction has exact length to hit surface, x value stores exact offset
         float    x_offset = rotated_direction[0];
+
         Vector3f position({ cartesian[X_AXIS], cartesian[Y_AXIS], 0 });
         Vector3f center_position({ _center_x, _center_y, 0 });
 
         Vector3f rotated_position = (position).rotateZ(table_angle, center_position);
 
-        motors_left[X_AXIS] = rotated_position[0] - x_offset;
-        motors_left[Y_AXIS] = rotated_position[1];
+
 
         // rotated_direction.norm() would move laser head rotation center directly onto the surface
         // subtracting _rotation_offset, we'd have the nozzle directly on the surface
@@ -88,11 +88,16 @@ namespace Kinematics {
         motors_left[A_AXIS] = table_angle * to_degrees;
         motors_left[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
+        float y_offset = 0.5f * fabsf(motors_left[B_AXIS] / 45.0f);
+
+        motors_left[X_AXIS] = rotated_position[0] - x_offset;
+        motors_left[Y_AXIS] = rotated_position[1] + y_offset;
+
         // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = position.rotateZ(M_PI + table_angle, center_position);
 
         motors_right[X_AXIS] = rotated_position_right[0] + x_offset;
-        motors_right[Y_AXIS] = rotated_position_right[1];
+        motors_right[Y_AXIS] = rotated_position_right[1] + y_offset;
 
         motors_right[Z_AXIS] = motors_left[Z_AXIS];
         motors_right[A_AXIS] = (table_angle)*to_degrees + 180;
