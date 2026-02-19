@@ -88,15 +88,16 @@ namespace Kinematics {
         motors_left[A_AXIS] = table_angle * to_degrees;
         motors_left[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
-        float y_offset = 0.5f * fabsf(motors_left[B_AXIS] / 45.0f);
+        float y_offset = 0.5f * (motors_left[B_AXIS] / 45.0f);
+        float x_off_at_45 = 0.5f * fabsf(motors_left[B_AXIS] / 45.0f);
 
-        motors_left[X_AXIS] = rotated_position[0] - x_offset;
+        motors_left[X_AXIS] = rotated_position[0] - x_offset + x_off_at_45;
         motors_left[Y_AXIS] = rotated_position[1] + y_offset;
 
         // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = position.rotateZ(M_PI + table_angle, center_position);
 
-        motors_right[X_AXIS] = rotated_position_right[0] + x_offset;
+        motors_right[X_AXIS] = rotated_position_right[0] + x_offset +x_off_at_45;
         motors_right[Y_AXIS] = rotated_position_right[1] + y_offset;
 
         motors_right[Z_AXIS] = motors_left[Z_AXIS];
@@ -195,7 +196,7 @@ namespace Kinematics {
 
     bool move_motors(float* target, plan_line_data_t* pl_data) {
         memcpy(last_mpos, target, 5 * sizeof(last_mpos[0]));
-        log_info("Moving: " << target[X_AXIS] << ", " << target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
+        //log_info("Moving: " << target[X_AXIS] << ", " << target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
         return mc_move_motors(target, pl_data);
     }
 
@@ -227,7 +228,7 @@ namespace Kinematics {
             sqrtf(powf(target[X_AXIS] - position[X_AXIS], 2) + powf(target[Y_AXIS] - position[Y_AXIS], 2)) / _kinematic_segment_len_mm;
 
         segment_count = fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS])));
-        log_info("Cartesian goal: " << target[X_AXIS] << ", " <<  target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
+        //log_info("Cartesian goal: " << target[X_AXIS] << ", " <<  target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
 
         if (segment_count > 1) {
             // array storing distance of each segment per axis
@@ -250,7 +251,7 @@ namespace Kinematics {
                 segment_cart[Z_AXIS] = position[Z_AXIS] + move[Z_AXIS] * p;
                 segment_cart[A_AXIS] = position[A_AXIS] + move[A_AXIS] * p;
                 segment_cart[B_AXIS] = position[B_AXIS] + move[B_AXIS] * p;
-                log_info("Cartesian segment: " << segment_cart[X_AXIS] << ", " <<  segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS]);
+                //log_info("Cartesian segment: " << segment_cart[X_AXIS] << ", " <<  segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS]);
                 if (!transform_cartesian_to_motors(motors, segment_cart)) {
                     return false;
                 }
