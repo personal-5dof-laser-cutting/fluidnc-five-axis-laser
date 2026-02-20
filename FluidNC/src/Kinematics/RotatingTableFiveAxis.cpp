@@ -72,14 +72,12 @@ namespace Kinematics {
         Vector3f rotated_direction = direction.rotateZ(table_angle);
 
         // direction has exact length to hit surface, x value stores exact offset
-        float    x_offset = rotated_direction[0];
+        float x_offset = rotated_direction[0];
 
         Vector3f position({ cartesian[X_AXIS], cartesian[Y_AXIS], 0 });
         Vector3f center_position({ _center_x, _center_y, 0 });
 
         Vector3f rotated_position = (position).rotateZ(table_angle, center_position);
-
-
 
         // rotated_direction.norm() would move laser head rotation center directly onto the surface
         // subtracting _rotation_offset, we'd have the nozzle directly on the surface
@@ -88,7 +86,7 @@ namespace Kinematics {
         motors_left[A_AXIS] = table_angle * to_degrees;
         motors_left[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
-        float y_offset = 0.5f * (motors_left[B_AXIS] / 45.0f);
+        float y_offset    = 0.5f * (motors_left[B_AXIS] / 45.0f);
         float x_off_at_45 = 0.5f * fabsf(motors_left[B_AXIS] / 45.0f);
 
         motors_left[X_AXIS] = rotated_position[0] - x_offset + x_off_at_45;
@@ -97,7 +95,7 @@ namespace Kinematics {
         // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = position.rotateZ(M_PI + table_angle, center_position);
 
-        motors_right[X_AXIS] = rotated_position_right[0] + x_offset +x_off_at_45;
+        motors_right[X_AXIS] = rotated_position_right[0] + x_offset + x_off_at_45;
         motors_right[Y_AXIS] = rotated_position_right[1] + y_offset;
 
         motors_right[Z_AXIS] = motors_left[Z_AXIS];
@@ -140,6 +138,7 @@ namespace Kinematics {
         }
 
         log_info("All out of bounds... Cannot move to target.");
+        set_state(State::Alarm);
         return false;
     }
 
@@ -197,7 +196,8 @@ namespace Kinematics {
     bool move_motors(float* target, plan_line_data_t* pl_data) {
         memcpy(last_mpos, target, 5 * sizeof(last_mpos[0]));
         //log_info("Moving: " << target[X_AXIS] << ", " << target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
-        return mc_move_motors(target, pl_data);
+        plan_line_data_t pl_copy = *pl_data;
+        return mc_move_motors(target, &pl_copy);
     }
 
     bool RotatingTableFiveAxis::cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) {
@@ -215,8 +215,8 @@ namespace Kinematics {
             position[X_AXIS] = _center_x;
             position[Y_AXIS] = _center_y;
             position[A_AXIS] = position[B_AXIS] = 0;
-            position[Z_AXIS] = target[Z_AXIS];
-            is_homing_pos = false;
+            position[Z_AXIS]                    = target[Z_AXIS];
+            is_homing_pos                       = false;
             if (!transform_cartesian_to_motors(motors, position)) {
                 return false;
             }
@@ -270,40 +270,30 @@ namespace Kinematics {
                     // <->
 
                     // turn on travel move
-                    SpindleState st = pl_data->spindle;
-                    auto sm = pl_data->motion;
+                    SpindleState st  = pl_data->spindle;
+                    auto         sm  = pl_data->motion;
                     pl_data->spindle = SpindleState::Disable;
-                    //pl_data->motion.rapidMotion = true;
+                    pl_data->motion.rapidMotion = true;
 
-                    // height above surface / cosf(b axis) = rotated direction norm
-                    float height_above_surface = _z_height + _rotation_offset - target[Z_AXIS];
+                    float cart_before[5] = {};
+                    motors_to_cartesian(cart_before, last_mpos, 5);
 
-                    float fix_move[5] = {};
-                    fix_move[X_AXIS] = _center_x;
-                    fix_move[Y_AXIS] = _center_y;
-                    fix_move[Z_AXIS] = _z_height - _focus_offset - target[Z_AXIS];
-                    fix_move[A_AXIS] = (motors[A_AXIS] + last_mpos[A_AXIS]) * 0.5f;
-                    fix_move[B_AXIS] = 0;
+                    float ctrTarget[5] = {_center_x, _center_y, target[Z_AXIS], 0, 0};
 
-                    for (float j = 0.0; j < 2 * fabsf(last_mpos[B_AXIS]); j++) {
-                        fix_move[B_AXIS] = last_mpos[B_AXIS] - j * (last_mpos[B_AXIS] / fabsf(last_mpos[B_AXIS]));
-                        fix_move[Z_AXIS] = height_above_surface / cosf(fix_move[B_AXIS] * to_radians) - (_focus_offset + _rotation_offset);
+                    // move to center
+                    cartesian_to_motors(ctrTarget, pl_data, cart_before);
 
-                        move_motors(fix_move, pl_data);
-                    }
+                    // move there (on the other side of  the table)
+                    move_motors(motors, pl_data);
 
-                    fix_move[X_AXIS] = 2 * _center_x - last_mpos[X_AXIS];
-                    fix_move[Y_AXIS] = 2 * _center_y - last_mpos[Y_AXIS];
-                    fix_move[Z_AXIS] = last_mpos[Z_AXIS];
-                    fix_move[A_AXIS] = motors[A_AXIS];
-                    fix_move[B_AXIS] = -last_mpos[B_AXIS];
-
-                    move_motors(fix_move, pl_data);
+                    // move back to our cartesian starting position, but this time this will be on the other side
+                    cartesian_to_motors(cart_before, pl_data, segment_cart);
 
                     // restore laser state
                     pl_data->spindle = st;
-                    pl_data->motion = sm;
+                    pl_data->motion  = sm;
                 }
+
                 // move current segment
                 move_motors(motors, pl_data);
             }
