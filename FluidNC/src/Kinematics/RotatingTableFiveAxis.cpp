@@ -273,7 +273,7 @@ namespace Kinematics {
                     SpindleState st  = pl_data->spindle;
                     auto         sm  = pl_data->motion;
                     pl_data->spindle = SpindleState::Disable;
-                    pl_data->motion.rapidMotion = true;
+                    /*pl_data->motion.rapidMotion = true;*/
 
                     float cart_before[5] = {};
                     motors_to_cartesian(cart_before, last_mpos, 5);
