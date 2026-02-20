@@ -86,17 +86,15 @@ namespace Kinematics {
         motors_left[A_AXIS] = table_angle * to_degrees;
         motors_left[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
-        float y_offset    = 0.5f * (motors_left[B_AXIS] / 45.0f);
-        float x_off_at_45 = 0.5f * fabsf(motors_left[B_AXIS] / 45.0f);
 
-        motors_left[X_AXIS] = rotated_position[0] - x_offset + x_off_at_45;
-        motors_left[Y_AXIS] = rotated_position[1] + y_offset;
+        motors_left[X_AXIS] = rotated_position[0] - x_offset;
+        motors_left[Y_AXIS] = rotated_position[1] ;
 
         // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = position.rotateZ(M_PI + table_angle, center_position);
 
-        motors_right[X_AXIS] = rotated_position_right[0] + x_offset + x_off_at_45;
-        motors_right[Y_AXIS] = rotated_position_right[1] + y_offset;
+        motors_right[X_AXIS] = rotated_position_right[0] + x_offset;
+        motors_right[Y_AXIS] = rotated_position_right[1];
 
         motors_right[Z_AXIS] = motors_left[Z_AXIS];
         motors_right[A_AXIS] = (table_angle)*to_degrees + 180;
@@ -227,7 +225,7 @@ namespace Kinematics {
         float segment_count =
             sqrtf(powf(target[X_AXIS] - position[X_AXIS], 2) + powf(target[Y_AXIS] - position[Y_AXIS], 2)) / _kinematic_segment_len_mm;
 
-        segment_count = fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS])));
+        segment_count = fmaxf(4, fmaxf(segment_count, fmaxf(fabsf(target[B_AXIS] - position[B_AXIS]), fabsf(target[A_AXIS] - position[A_AXIS]))));
         //log_info("Cartesian goal: " << target[X_AXIS] << ", " <<  target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
 
         if (segment_count > 1) {
@@ -273,17 +271,12 @@ namespace Kinematics {
                     SpindleState st  = pl_data->spindle;
                     auto         sm  = pl_data->motion;
                     pl_data->spindle = SpindleState::Disable;
-                    /*pl_data->motion.rapidMotion = true;*/
+                    pl_data->motion.rapidMotion = true;
 
                     float cart_before[5] = {};
                     motors_to_cartesian(cart_before, last_mpos, 5);
 
-                    float ctrTarget[5] = {_center_x, _center_y, target[Z_AXIS], 0, 0};
-
-                    // move to center
-                    cartesian_to_motors(ctrTarget, pl_data, cart_before);
-
-                    // move there (on the other side of  the table)
+                    // move there (on the other side of the table)
                     move_motors(motors, pl_data);
 
                     // move back to our cartesian starting position, but this time this will be on the other side
