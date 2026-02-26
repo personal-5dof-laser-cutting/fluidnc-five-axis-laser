@@ -11,6 +11,7 @@ constexpr float to_degrees = 180.0 / M_PI;
 namespace Kinematics {
 
     static float last_mpos[5]  = {};
+    static float last_cart[5] = {};
     static bool  is_homing_pos = false;
 
     void RotatingTableFiveAxis::group(Configuration::HandlerBase& handler) {
@@ -191,9 +192,12 @@ namespace Kinematics {
         cartesian[Y_AXIS] = original_pos[1];
     }
 
-    bool move_motors(float* target, plan_line_data_t* pl_data) {
+    bool move_motors(float* target, plan_line_data_t* pl_data, const float* cartesian_equivalent) {
         memcpy(last_mpos, target, 5 * sizeof(last_mpos[0]));
-        //log_info("Moving: " << target[X_AXIS] << ", " << target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
+        memcpy(last_cart, cartesian_equivalent, 5 * sizeof(cartesian_equivalent[0]));
+        log_info("CART MOVE: " << cartesian_equivalent[X_AXIS] << ", " << cartesian_equivalent[Y_AXIS] << ", " << cartesian_equivalent[Z_AXIS] << ", " << cartesian_equivalent[A_AXIS] << ", " << cartesian_equivalent[B_AXIS]);
+        log_info("MOTOR -> " << target[X_AXIS] << ", " << target[Y_AXIS] << ", " << target[Z_AXIS] << ", " << target[A_AXIS] << ", " << target[B_AXIS]);
+
         plan_line_data_t pl_copy = *pl_data;
         return mc_move_motors(target, &pl_copy);
     }
@@ -218,7 +222,7 @@ namespace Kinematics {
             if (!transform_cartesian_to_motors(motors, position)) {
                 return false;
             }
-            move_motors(motors, pl_data);
+            move_motors(motors, pl_data, position);
         }
 
         // segment count calculated from xy-move distance, and angles, so that resolution is at least 1-per-degree and _kinematic_segment_len_mm for xy.
@@ -260,12 +264,15 @@ namespace Kinematics {
                 // more than 3 degrees difference can only happen if left/right change
                 // -> causes b to change sign from one segment to the next
                 // -> z stays same -> nozzle moves into table
-                if (fabsf(motors[B_AXIS] - last_mpos[B_AXIS]) > 3) {
+                if (fabsf(motors[B_AXIS] - last_mpos[B_AXIS]) > 3 && pl_data->spindle != SpindleState::Disable) {
                     log_info("Using jonas cool function");
-                    // movement wouldn't be intended by user -> travel move?
-                    // travel move -> segment would essentially be skipped -> cut move?
-                    // last_mpos = right -> travel to last_mpos_left
-                    // <->
+
+                    float cart_before[5] = {};
+                    memcpy(cart_before, last_cart, 5 * sizeof(cart_before[0]));
+                    log_info("Cut should start at (cart before)" << cart_before[X_AXIS] << ", " << cart_before[Y_AXIS] << ", " << cart_before[Z_AXIS] << ", " << cart_before[A_AXIS] << ", " << cart_before[B_AXIS]);
+                    log_info("Travelling (no laser) to next segment:")
+                    log_info("The move to: " << segment_cart[X_AXIS] << ", " << segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS] << " is not reachable here.");
+                    log_info("motors -> " << motors[X_AXIS] << ", " << motors[Y_AXIS] << ", " << motors[Z_AXIS] << ", " << motors[A_AXIS] << ", " << motors[B_AXIS]);
 
                     // turn on travel move
                     SpindleState st  = pl_data->spindle;
@@ -273,22 +280,28 @@ namespace Kinematics {
                     pl_data->spindle = SpindleState::Disable;
                     pl_data->motion.rapidMotion = true;
 
-                    float cart_before[5] = {};
-                    motors_to_cartesian(cart_before, last_mpos, 5);
+                    // cartesian move to the segment (which will now be on the other side of the table)
+                    cartesian_to_motors(segment_cart, pl_data, last_cart);
 
-                    // move there (on the other side of the table)
-                    move_motors(motors, pl_data);
 
+                    log_info("Travelling back to the cartesian point where the cut should start at: "<< cart_before[X_AXIS] << ", " << cart_before[Y_AXIS] << ", " << cart_before[Z_AXIS] << ", " << cart_before[A_AXIS] << ", " << cart_before[B_AXIS])
                     // move back to our cartesian starting position, but this time this will be on the other side
                     cartesian_to_motors(cart_before, pl_data, segment_cart);
-
+                    log_info("Restoring state and beginning cut, to (segment cart)" << segment_cart[X_AXIS] << ", " << segment_cart[Y_AXIS] << ", " << segment_cart[Z_AXIS] << ", " << segment_cart[A_AXIS] << ", " << segment_cart[B_AXIS]);
                     // restore laser state
                     pl_data->spindle = st;
                     pl_data->motion  = sm;
+
+                    // recalculate segment
+                    memcpy(motors, last_mpos, 5 * sizeof(motors[0]));
+                    if (!transform_cartesian_to_motors(motors, segment_cart)) {
+                        return false;
+                    }
+
                 }
 
                 // move current segment
-                move_motors(motors, pl_data);
+                move_motors(motors, pl_data, segment_cart);
             }
         }
 
@@ -296,7 +309,7 @@ namespace Kinematics {
         if (!transform_cartesian_to_motors(motors, target)) {
             return false;
         }
-        return move_motors(motors, pl_data);
+        return move_motors(motors, pl_data, target);
     }
 
     // Configuration registration
