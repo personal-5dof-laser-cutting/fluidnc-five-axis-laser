@@ -43,6 +43,21 @@ namespace Kinematics {
         }
     }
 
+    bool RotatingTableFiveAxis::transform_cartesian_to_motors(float* motors, float* cartesian) {
+        if (state_is(State::Homing)) {
+            return Cartesian::transform_cartesian_to_motors(motors, cartesian);
+        }
+
+        Mpos closest, furthest;
+        cartesian_to_closest_furthest(Cpos(cartesian), closest, furthest);
+        motors[X_AXIS] = closest[A_AXIS];
+        motors[Y_AXIS] = closest[B_AXIS];
+        motors[Z_AXIS] = closest[Z_AXIS];
+        motors[A_AXIS] = closest[A_AXIS];
+        motors[B_AXIS] = closest[B_AXIS];
+
+        return true;
+    }
     bool RotatingTableFiveAxis::cartesian_to_motors(float* _target, plan_line_data_t* pl_data, float* _position) {
         if (state_is(State::Homing)) {
             // home in cartesian
@@ -99,8 +114,8 @@ namespace Kinematics {
     }
 
     float RotatingTableFiveAxis::angle_distance(const float a1, const float a2) {
-        const float diff = fmodf((a2 - a1 + 180), 360 - 180);
-        return diff < -180 ? diff + 360 : diff;
+        const float diff = fmodf((a2 - a1 + 180.0f), 360.0f) - 180.0f;
+        return diff < -180.0f ? diff + 360.0f : diff;
     }
 
     bool RotatingTableFiveAxis::is_in_bounds(const Mpos& mpos) const {
@@ -167,30 +182,40 @@ namespace Kinematics {
         m2[B_AXIS] = -m1[B_AXIS];
     }
 
-    void RotatingTableFiveAxis::direct_move(const Cpos& start, const Cpos& end, plan_line_data_t* pl_data) {
+    void RotatingTableFiveAxis::cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest) {
         Mpos m1, m2;
-        cartesian_to_possible_motors(end, m1, m2);
+        cartesian_to_possible_motors(cartesian, m1, m2);
 
         clamp_bounds(m1);
         clamp_bounds(m2);
 
-        float d1 = angle_distance(_last_mpos.a, m1.a);
-        float d2 = angle_distance(_last_mpos.a, m2.a);
+        const float d1 = angle_distance(_last_mpos.a, m1.a);
+        const float d2 = angle_distance(_last_mpos.a, m2.a);
 
         // Convert table motor positions to cumulative table motor positions
-        m1 = Mpos { m1.x, m1.y, m1.z, m1.a + d1, m1.b };
-        m2 = Mpos { m2.x, m2.y, m2.z, m2.a + d2, m2.b };
+        m1 = Mpos { m1.x, m1.y, m1.z, _last_mpos.a + d1, m1.b };
+        m2 = Mpos { m2.x, m2.y, m2.z, _last_mpos.a + d2, m2.b };
 
         // Pick the one that's closer to the current position
-        Mpos closest = (std::abs(d1) < std::abs(d2)) ? m1 : m2;
-        Mpos other   = (std::abs(d1) > std::abs(d2)) ? m1 : m2;
+        if (fabsf(d1) < fabsf(d2)) {
+            closest  = m1;
+            furthest = m2;
+        } else {
+            closest  = m2;
+            furthest = m1;
+        }
+    }
+
+    void RotatingTableFiveAxis::direct_move(const Cpos& start, const Cpos& end, plan_line_data_t* pl_data) {
+        Mpos closest, furthest;
+        cartesian_to_closest_furthest(end, closest, furthest);
 
         if (is_in_bounds(closest)) {
             move_motors(closest, pl_data);
         } else {
-            if (is_in_bounds(other)) {
+            if (is_in_bounds(furthest)) {
                 // If the closest is out of bounds, we have to first travel to the other table side
-                safe_fast_move_motors(_last_mpos, other, pl_data);
+                safe_fast_move_motors(_last_mpos, furthest, pl_data);
                 // We are now at the cut end point. From here, perform the cut if needed
                 if (pl_data->spindle != SpindleState::Disable) {
                     auto st                     = pl_data->spindle;
@@ -219,10 +244,10 @@ namespace Kinematics {
         pl_data->spindle            = SpindleState::Disable;
         pl_data->motion.rapidMotion = true;
 
-        auto start_higher = start;
-        auto goal_higher = goal;
+        auto start_higher    = start;
+        auto goal_higher     = goal;
         start_higher[Z_AXIS] = 0;
-        goal_higher[Z_AXIS] = 0;
+        goal_higher[Z_AXIS]  = 0;
 
         move_motors(start_higher, pl_data);
         move_motors(goal_higher, pl_data);
@@ -230,7 +255,6 @@ namespace Kinematics {
 
         pl_data->spindle = st;
         pl_data->motion  = sm;
-
     }
 
     void RotatingTableFiveAxis::segmented_move(const Cpos& start, const Cpos& end, plan_line_data_t* pl_data) {
@@ -257,8 +281,9 @@ namespace Kinematics {
     }
 
     void RotatingTableFiveAxis::move_motors(const Mpos& pos, plan_line_data_t* pl_data) {
-        _last_mpos = pos;
         auto copy = pos;
-        mc_move_motors(copy.asFloatArray(), pl_data);
+        if (mc_move_motors(copy.asFloatArray(), pl_data)) {
+            _last_mpos = pos;
+        }
     }
 }

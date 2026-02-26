@@ -197,7 +197,7 @@ namespace Kinematics {
         static float angle_distance(float a1, float a2);
 
         // Returns false if the motor position is out of bounds for the machine
-        bool is_in_bounds(const Mpos& mpos) const;
+        [[nodiscard]] bool is_in_bounds(const Mpos& mpos) const;
 
         // Clamps the motor position to bounds if needed
         void clamp_bounds(Mpos& mpos) const;
@@ -217,6 +217,10 @@ namespace Kinematics {
 
         // Move to motor position and update last_mpos
         void move_motors(const Mpos& pos, plan_line_data_t* pl_data);
+
+        void cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest);
+
+
     };
 
 }  // namespace Kinematics
