@@ -50,12 +50,20 @@ namespace Kinematics {
 
         Mpos closest, furthest;
         cartesian_to_closest_furthest(Cpos(cartesian), closest, furthest);
-        motors[X_AXIS] = closest[A_AXIS];
-        motors[Y_AXIS] = closest[B_AXIS];
-        motors[Z_AXIS] = closest[Z_AXIS];
-        motors[A_AXIS] = closest[A_AXIS];
-        motors[B_AXIS] = closest[B_AXIS];
-
+        Mpos& selected = closest;
+        if (!is_in_bounds(closest)) {
+            if (is_in_bounds(furthest)) {
+                selected = furthest;
+            } else {
+                log_error("Kinematic calculation error. Target unreachable (" << cartesian[0] << "," << cartesian[1] << "," << cartesian[2] << ")");
+                return false;
+            }
+        }
+        motors[X_AXIS] = selected[A_AXIS];
+        motors[Y_AXIS] = selected[B_AXIS];
+        motors[Z_AXIS] = selected[Z_AXIS];
+        motors[A_AXIS] = selected[A_AXIS];
+        motors[B_AXIS] = selected[B_AXIS];
         return true;
     }
     bool RotatingTableFiveAxis::cartesian_to_motors(float* _target, plan_line_data_t* pl_data, float* _position) {
