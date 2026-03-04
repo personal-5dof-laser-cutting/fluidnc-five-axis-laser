@@ -29,6 +29,15 @@ namespace Kinematics {
         handler.item("max_x", _max_x);
         handler.item("max_y", _max_y);
         handler.item("angle_threshold", _angle_threshold);
+        handler.item("angle_xoff_x4", _angle_xoff_x4);
+        handler.item("angle_xoff_x3", _angle_xoff_x3);
+        handler.item("angle_xoff_x2", _angle_xoff_x2);
+        handler.item("angle_xoff_x1", _angle_xoff_x1);
+
+        handler.item("angle_yoff_x4", _angle_yoff_x4);
+        handler.item("angle_yoff_x3", _angle_yoff_x3);
+        handler.item("angle_yoff_x2", _angle_yoff_x2);
+        handler.item("angle_yoff_x1", _angle_yoff_x1);
     }
 
     void RotatingTableFiveAxis::init() {
@@ -55,7 +64,8 @@ namespace Kinematics {
             if (is_in_bounds(furthest)) {
                 selected = furthest;
             } else {
-                log_error("Kinematic calculation error. Target unreachable (" << cartesian[0] << "," << cartesian[1] << "," << cartesian[2] << ")");
+                log_error("Kinematic calculation error. Target unreachable (" << cartesian[0] << "," << cartesian[1] << "," << cartesian[2]
+                                                                              << ")");
                 return false;
             }
         }
@@ -119,6 +129,9 @@ namespace Kinematics {
 
         cartesian[X_AXIS] = original_pos[0];
         cartesian[Y_AXIS] = original_pos[1];
+
+        cartesian[X_AXIS] += this->estimate_x_offset(Cpos(cartesian));
+        cartesian[Y_AXIS] += this->estimate_y_offset(Cpos(cartesian));
     }
 
     float RotatingTableFiveAxis::angle_distance(const float a1, const float a2) {
@@ -137,6 +150,16 @@ namespace Kinematics {
             mpos[Z_AXIS] = 0;
         if (mpos[Z_AXIS] > _max_z)
             mpos[Z_AXIS] = _max_z;
+    }
+
+    float RotatingTableFiveAxis::estimate_x_offset(const Mpos& mpos) {
+        return _angle_xoff_x4 * powf(mpos[B_AXIS], 4.0) + _angle_xoff_x3 * powf(mpos[B_AXIS], 3.0) +
+               _angle_xoff_x2 * powf(mpos[B_AXIS], 2.0) + _angle_xoff_x1 * mpos[B_AXIS];
+    }
+
+    float RotatingTableFiveAxis::estimate_y_offset(const Mpos& mpos) {
+        return _angle_yoff_x4 * powf(mpos[B_AXIS], 4.0) + _angle_yoff_x3 * powf(mpos[B_AXIS], 3.0) +
+               _angle_yoff_x2 * powf(mpos[B_AXIS], 2.0) + _angle_yoff_x1 * mpos[B_AXIS];
     }
 
     void RotatingTableFiveAxis::cartesian_to_possible_motors(const Cpos& cartesian, Mpos& m1, Mpos& m2) {
@@ -188,6 +211,11 @@ namespace Kinematics {
         if (m2[A_AXIS] >= 360)
             m2[A_AXIS] = m2[A_AXIS] - 360;
         m2[B_AXIS] = -m1[B_AXIS];
+
+        m1[X_AXIS] -= this->estimate_x_offset(m1);
+        m1[Y_AXIS] -= this->estimate_y_offset(m1);
+        m2[X_AXIS] -= this->estimate_x_offset(m2);
+        m2[Y_AXIS] -= this->estimate_y_offset(m2);
     }
 
     void RotatingTableFiveAxis::cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest) {

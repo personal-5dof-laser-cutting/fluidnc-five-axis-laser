@@ -187,6 +187,14 @@ namespace Kinematics {
         float _max_x                    = 0.0f;
         float _max_y                    = 0.0f;
         float _angle_threshold          = 0.0f;
+        float _angle_xoff_x4            = 0.0f;
+        float _angle_xoff_x3            = 0.0f;
+        float _angle_xoff_x2            = 0.0f;
+        float _angle_xoff_x1            = 0.0f;
+        float _angle_yoff_x4            = 0.0f;
+        float _angle_yoff_x3            = 0.0f;
+        float _angle_yoff_x2            = 0.0f;
+        float _angle_yoff_x1            = 0.0f;
 
         // state parameters
         Vector3f _center = { 0, 0, 0 };
@@ -201,6 +209,10 @@ namespace Kinematics {
 
         // Clamps the motor position to bounds if needed
         void clamp_bounds(Mpos& mpos) const;
+
+        float estimate_x_offset(const Mpos& mpos);
+
+        float estimate_y_offset(const Mpos& mpos);
 
         // The machine has up to two different valid configurations for each cartesian position.
         // This should perform kinematics and return them. They may be equal.
@@ -219,8 +231,6 @@ namespace Kinematics {
         void move_motors(const Mpos& pos, plan_line_data_t* pl_data);
 
         void cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest);
-
-
     };
 
 }  // namespace Kinematics
