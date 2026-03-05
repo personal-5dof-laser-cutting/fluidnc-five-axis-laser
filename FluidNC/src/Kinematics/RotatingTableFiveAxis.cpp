@@ -69,8 +69,8 @@ namespace Kinematics {
                 return false;
             }
         }
-        motors[X_AXIS] = selected[A_AXIS];
-        motors[Y_AXIS] = selected[B_AXIS];
+        motors[X_AXIS] = selected[X_AXIS];
+        motors[Y_AXIS] = selected[Y_AXIS];
         motors[Z_AXIS] = selected[Z_AXIS];
         motors[A_AXIS] = selected[A_AXIS];
         motors[B_AXIS] = selected[B_AXIS];
