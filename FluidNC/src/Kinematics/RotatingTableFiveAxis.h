@@ -64,6 +64,12 @@ namespace Kinematics {
         }
         float* asFloatArray() { return &x; }
 
+        void copyToFloatArray(float* arr) const {
+            for (int i = 0; i < 6; i++) {
+                arr[i] = (&x)[i];
+            }
+        }
+
         FiveTuple operator+(const FiveTuple& rhs) const { return FiveTuple(x + rhs.x, y + rhs.y, z + rhs.z, a + rhs.a, b + rhs.b); }
 
         FiveTuple operator-(const FiveTuple& rhs) const { return FiveTuple(x - rhs.x, y - rhs.y, z - rhs.z, a - rhs.a, b - rhs.b); }

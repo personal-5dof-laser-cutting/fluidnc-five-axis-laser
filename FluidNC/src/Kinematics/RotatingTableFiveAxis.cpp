@@ -69,11 +69,7 @@ namespace Kinematics {
                 return false;
             }
         }
-        motors[X_AXIS] = selected[A_AXIS];
-        motors[Y_AXIS] = selected[B_AXIS];
-        motors[Z_AXIS] = selected[Z_AXIS];
-        motors[A_AXIS] = selected[A_AXIS];
-        motors[B_AXIS] = selected[B_AXIS];
+        selected.copyToFloatArray(motors);
         return true;
     }
     bool RotatingTableFiveAxis::cartesian_to_motors(float* _target, plan_line_data_t* pl_data, float* _position) {
