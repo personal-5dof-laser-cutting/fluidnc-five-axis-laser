@@ -29,6 +29,7 @@ namespace Kinematics {
         handler.item("max_x", _max_x);
         handler.item("max_y", _max_y);
         handler.item("angle_threshold", _angle_threshold);
+        handler.item("laser_z_angle", _laser_head_z_angle);
     }
 
     void RotatingTableFiveAxis::init() {
@@ -97,6 +98,9 @@ namespace Kinematics {
         Vector3f    rotated_direction = { length * sinf(b_angle_rad), 0, -length * cosf(b_angle_rad) };
         const float x_offset          = rotated_direction[0];
 
+        Vector3f offsets {0.0f, 0.0f, 0.0f};
+        estimate_offsets(rotated_direction, offsets);
+
         // Undo the table rotation on the direction vector to find original A and B angles
         Vector3f direction = rotated_direction.rotateZ(-table_angle);
 
@@ -109,7 +113,7 @@ namespace Kinematics {
 
         // Recover X and Y
         const Vector3f center_position({ _center_x, _center_y, 0 });
-        const Vector3f rotated_pos_no_offset({ motors[X_AXIS] + x_offset, motors[Y_AXIS], 0 });
+        const Vector3f rotated_pos_no_offset({ motors[X_AXIS] + x_offset - offsets[0], motors[Y_AXIS] - offsets[1], 0 });
 
         Vector3f original_pos = rotated_pos_no_offset.rotateZ(-table_angle, center_position);
 
@@ -133,6 +137,19 @@ namespace Kinematics {
             mpos[Z_AXIS] = 0;
         if (mpos[Z_AXIS] > _max_z)
             mpos[Z_AXIS] = _max_z;
+    }
+
+    void RotatingTableFiveAxis::estimate_offsets(Vector3f rotated_direction, Vector3f& offsets) const {
+        float rotation_of_laserhead = _laser_head_z_angle * to_radians;
+
+        float cos_laser = cosf(rotation_of_laserhead);
+        float sin_laser = sinf(rotation_of_laserhead);
+
+        float rotated_x = cos_laser * rotated_direction[0] - sin_laser * rotated_direction[1];
+        float rotated_y = sin_laser * rotated_direction[0] + cos_laser * rotated_direction[1];
+
+        offsets[0] = rotated_direction[0] - rotated_x;;
+        offsets[1] = rotated_direction[1] - rotated_y;
     }
 
     void RotatingTableFiveAxis::cartesian_to_possible_motors(const Cpos& cartesian, Mpos& m1, Mpos& m2) {
@@ -163,6 +180,10 @@ namespace Kinematics {
 
         Vector3f rotated_position = (position).rotateZ(table_angle, center_position);
 
+        Vector3f offsets{0.0f, 0.0f, 0.0f};
+
+        estimate_offsets(rotated_direction, offsets);
+
         // rotated_direction.norm() would move laser head rotation center directly onto the surface
         // subtracting _rotation_offset, we'd have the nozzle directly on the surface
         // also subtracting the _focus_offset puts the focus point on the surface
@@ -170,20 +191,22 @@ namespace Kinematics {
         m1[A_AXIS] = table_angle * to_degrees;
         m1[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
-        m1[X_AXIS] = rotated_position[0] - x_offset;
-        m1[Y_AXIS] = rotated_position[1];
+        m1[X_AXIS] = rotated_position[0] - x_offset + offsets[0];
+        m1[Y_AXIS] = rotated_position[1] + offsets[1];
 
         // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = position.rotateZ(M_PI + table_angle, center_position);
 
-        m2[X_AXIS] = rotated_position_right[0] + x_offset;
-        m2[Y_AXIS] = rotated_position_right[1];
+        m2[X_AXIS] = rotated_position_right[0] + x_offset -offsets[0];
+        m2[Y_AXIS] = rotated_position_right[1] - offsets[1];
 
         m2[Z_AXIS] = m1[Z_AXIS];
         m2[A_AXIS] = (table_angle)*to_degrees + 180;
         if (m2[A_AXIS] >= 360)
             m2[A_AXIS] = m2[A_AXIS] - 360;
         m2[B_AXIS] = -m1[B_AXIS];
+
+        // calculate x_off as vec2(rotated_direction(x), 0) rotated by laser head z rotation
     }
 
     void RotatingTableFiveAxis::cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest) {

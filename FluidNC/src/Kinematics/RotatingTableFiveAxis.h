@@ -193,6 +193,7 @@ namespace Kinematics {
         float _max_x                    = 0.0f;
         float _max_y                    = 0.0f;
         float _angle_threshold          = 0.0f;
+        float _laser_head_z_angle       = 0.5f;
 
         // state parameters
         Vector3f _center = { 0, 0, 0 };
@@ -207,6 +208,9 @@ namespace Kinematics {
 
         // Clamps the motor position to bounds if needed
         void clamp_bounds(Mpos& mpos) const;
+
+        // Calculates x and y offset
+        void estimate_offsets(Vector3f rotated_direction, Vector3f& offsets) const;
 
         // The machine has up to two different valid configurations for each cartesian position.
         // This should perform kinematics and return them. They may be equal.
