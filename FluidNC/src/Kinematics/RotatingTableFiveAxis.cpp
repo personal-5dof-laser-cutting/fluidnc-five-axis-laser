@@ -142,14 +142,8 @@ namespace Kinematics {
     void RotatingTableFiveAxis::estimate_offsets(Vector3f rotated_direction, Vector3f& offsets) const {
         float rotation_of_laserhead = _laser_head_z_angle * to_radians;
 
-        float cos_laser = cosf(rotation_of_laserhead);
-        float sin_laser = sinf(rotation_of_laserhead);
-
-        float rotated_x = cos_laser * rotated_direction[0] - sin_laser * rotated_direction[1];
-        float rotated_y = sin_laser * rotated_direction[0] + cos_laser * rotated_direction[1];
-
-        offsets[0] = rotated_direction[0] - rotated_x;;
-        offsets[1] = rotated_direction[1] - rotated_y;
+        offsets = rotated_direction.rotateZ(-rotation_of_laserhead);
+        offsets = rotated_direction - offsets;
     }
 
     void RotatingTableFiveAxis::cartesian_to_possible_motors(const Cpos& cartesian, Mpos& m1, Mpos& m2) {
@@ -259,6 +253,10 @@ namespace Kinematics {
             } else {
                 // Put machine in alarm state. Both positions not reachable.
                 log_info("Out Of Bounds: Cannot move to target.");
+                log_info("closest: " << closest[0] << ", " << closest[1] << ", " << closest[2] << ", " << closest[3] << ", " << closest[4] << ", " << "\n");
+                log_info("furthest: " << furthest[0] << ", " << furthest[1] << ", " << furthest[2] << ", " << furthest[3] << ", " << furthest[4] << ", " << "\n");
+                log_info("cartesian: " << end[0] << ", " << end[1] << ", " << end[2] << ", " << end[3] << ", " << end[4] << ", " << "\n");
+
                 set_state(State::Alarm);
             }
         }
