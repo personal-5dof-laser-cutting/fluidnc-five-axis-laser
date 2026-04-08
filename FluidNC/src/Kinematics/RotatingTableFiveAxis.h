@@ -192,7 +192,6 @@ namespace Kinematics {
         float _z_height                 = 0;
         float _max_x                    = 0.0f;
         float _max_y                    = 0.0f;
-        float _angle_threshold          = 0.0f;
         float _laser_head_z_angle       = 0.5f;
 
         // state parameters

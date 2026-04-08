@@ -28,7 +28,6 @@ namespace Kinematics {
         handler.item("z_height", _z_height);
         handler.item("max_x", _max_x);
         handler.item("max_y", _max_y);
-        handler.item("angle_threshold", _angle_threshold);
         handler.item("laser_z_angle", _laser_head_z_angle);
     }
 
