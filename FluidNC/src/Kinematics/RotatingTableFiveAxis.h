@@ -208,9 +208,6 @@ namespace Kinematics {
         // Clamps the motor position to bounds if needed
         void clamp_bounds(Mpos& mpos) const;
 
-        // Calculates x and y offset
-        void estimate_offsets(Vector3f rotated_direction, Vector3f& offsets) const;
-
         // The machine has up to two different valid configurations for each cartesian position.
         // This should perform kinematics and return them. They may be equal.
         void cartesian_to_possible_motors(const Cpos& cartesian, Mpos& m1, Mpos& m2);
