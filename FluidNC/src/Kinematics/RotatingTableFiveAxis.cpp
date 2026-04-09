@@ -4,6 +4,7 @@
 #include "../Machine/MachineConfig.h"
 constexpr float to_radians = M_PI / 180.0;
 constexpr float to_degrees = 180.0 / M_PI;
+constexpr float angleoffs[] = {-2.1f, -1.75f, -1.0f, -0.55f, -0.5f, -0.4f, -0.3f, -0.15f, -0.05f, 0.0f, 0.25f, 0.7f, 1.0f, 1.4f, 1.8f, 2.2f, 3.0f, 2.8f, 3.3f};
 
 namespace Kinematics {
     // Configuration registration
@@ -135,6 +136,18 @@ namespace Kinematics {
             mpos[Z_AXIS] = _max_z;
     }
 
+    void RotatingTableFiveAxis::estimate_offsets(float angle, Vector3f& offs) const {
+        angle = fminf(fmaxf(angle, -44.99f), 44.99f) + 45.0f; //clamping
+
+        int int_angle = floor(angle);
+        int index = int_angle / 5;
+
+        float lower_weight = (angle - index * 5.0f) / 5.0f;
+
+        float x_off = lower_weight * angleoffs[index + 1] + (1.0f - lower_weight) * angleoffs[index];
+        offs[0] = x_off;
+    }
+
     void RotatingTableFiveAxis::cartesian_to_possible_motors(const Cpos& cartesian, Mpos& m1, Mpos& m2) {
         // distance from rotation center of laser head to surface of work piece
         float height_above_surface = _z_height + _rotation_offset - cartesian[Z_AXIS];
@@ -163,20 +176,24 @@ namespace Kinematics {
 
         Vector3f rotated_position = (position).rotateZ(table_angle, center_position);
 
-        // rotated_direction.norm() would move laser head rotation center directly onto the surface
-        // subtracting _rotation_offset, we'd have the nozzle directly on the surface
-        // also subtracting the _focus_offset puts the focus point on the surface
+        Vector3f offsets{0.0f, 0.0f, 0.0f};
+        estimate_offsets(-atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees, offsets);
+
+        //rotated_direction.norm() is exact distance between the rotation center of the laser head
+        // and the material surface, subtracting _focus_offset and _rotation_offset gives
+        // distance between focus point and surface
         m1[Z_AXIS] = (rotated_direction.norm() - (_focus_offset + _rotation_offset));
         m1[A_AXIS] = table_angle * to_degrees;
         m1[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
-        m1[X_AXIS] = rotated_position[0] - x_offset;
+        m1[X_AXIS] = rotated_position[0] - x_offset - offsets[0];
         m1[Y_AXIS] = rotated_position[1];
 
         // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = position.rotateZ(M_PI + table_angle, center_position);
 
-        m2[X_AXIS] = rotated_position_right[0] + x_offset;
+        estimate_offsets(-m1[B_AXIS], offsets);
+        m2[X_AXIS] = rotated_position_right[0] + x_offset - offsets[0];
         m2[Y_AXIS] = rotated_position_right[1];
 
         m2[Z_AXIS] = m1[Z_AXIS];
@@ -184,8 +201,6 @@ namespace Kinematics {
         if (m2[A_AXIS] >= 360)
             m2[A_AXIS] = m2[A_AXIS] - 360;
         m2[B_AXIS] = -m1[B_AXIS];
-
-        // calculate x_off as vec2(rotated_direction(x), 0) rotated by laser head z rotation
     }
 
     void RotatingTableFiveAxis::cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest) {
@@ -248,7 +263,7 @@ namespace Kinematics {
     }
 
     void RotatingTableFiveAxis::safe_fast_move_motors(const Mpos& start, const Mpos& goal, plan_line_data_t* pl_data) {
-        // TODO: make better
+
         auto st                     = pl_data->spindle;
         auto sm                     = pl_data->motion;
         pl_data->spindle            = SpindleState::Disable;
