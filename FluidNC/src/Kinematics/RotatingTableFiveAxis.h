@@ -182,7 +182,6 @@ namespace Kinematics {
         float _max_z                    = 0.0f;
         float _focus_offset             = 0.0f;
         float _max_angle                = 0.0f;
-        float _kinematic_segment_len_mm = 1.0;
         float _center_x                 = 0;
         float _center_y                 = 0;
         float _rotation_offset          = 0;

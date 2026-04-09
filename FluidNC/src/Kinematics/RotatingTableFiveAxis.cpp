@@ -21,7 +21,6 @@ namespace Kinematics {
         handler.item("max_z_mm", _max_z);
         handler.item("focus_offset", _focus_offset);
         handler.item("max_angle", _max_angle);
-        handler.item("kinematic_segment_len_mm", _kinematic_segment_len_mm);
         handler.item("center_x", _center_x);
         handler.item("center_y", _center_y);
         handler.item("rotation_offset", _rotation_offset);
