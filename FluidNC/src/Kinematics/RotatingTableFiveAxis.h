@@ -170,9 +170,6 @@ namespace Kinematics {
     public:
         explicit RotatingTableFiveAxis(const char* name) : Cartesian(name) {}
 
-        // FiveTuple struct - actual raw motor positions or cartesian positions
-
-        // Configurable parameters
         void group(Configuration::HandlerBase& handler) override;
         bool cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) override;
         void init() override;
@@ -223,6 +220,7 @@ namespace Kinematics {
         // Move to motor position and update last_mpos
         void move_motors(const Mpos& pos, plan_line_data_t* pl_data);
 
+        // Check which of the two possible motor configurations is closer
         void cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest);
 
 
