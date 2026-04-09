@@ -28,7 +28,6 @@ namespace Kinematics {
         handler.item("z_height", _z_height);
         handler.item("max_x", _max_x);
         handler.item("max_y", _max_y);
-        handler.item("laser_z_angle", _laser_head_z_angle);
     }
 
     void RotatingTableFiveAxis::init() {
@@ -71,7 +70,7 @@ namespace Kinematics {
 
         auto position = Cpos(_position);
         auto target   = Cpos(_target);
-        // for the first call after homing, move to a sane position before continuing
+        // for the first call after homing, move to a safe position before continuing
         if (_homing) {
             _homing  = false;
             position = Cpos(_center_x, _center_y, target[Z_AXIS], 0, 0);
@@ -163,9 +162,9 @@ namespace Kinematics {
 
         Vector3f rotated_position = (position).rotateZ(table_angle, center_position);
 
-        // rotated_direction.norm() would move laser head rotation center directly onto the surface
-        // subtracting _rotation_offset, we'd have the nozzle directly on the surface
-        // also subtracting the _focus_offset puts the focus point on the surface
+        // rotated_direction.norm() is exact distance from laser head rotation center to material surface
+        // subtracting _focus_offset and _rotation_offset gives distance between laser focus point
+        // and material surface
         m1[Z_AXIS] = (rotated_direction.norm() - (_focus_offset + _rotation_offset));
         m1[A_AXIS] = table_angle * to_degrees;
         m1[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
@@ -184,8 +183,6 @@ namespace Kinematics {
         if (m2[A_AXIS] >= 360)
             m2[A_AXIS] = m2[A_AXIS] - 360;
         m2[B_AXIS] = -m1[B_AXIS];
-
-        // calculate x_off as vec2(rotated_direction(x), 0) rotated by laser head z rotation
     }
 
     void RotatingTableFiveAxis::cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest) {
@@ -248,7 +245,7 @@ namespace Kinematics {
     }
 
     void RotatingTableFiveAxis::safe_fast_move_motors(const Mpos& start, const Mpos& goal, plan_line_data_t* pl_data) {
-        // TODO: make better
+
         auto st                     = pl_data->spindle;
         auto sm                     = pl_data->motion;
         pl_data->spindle            = SpindleState::Disable;
