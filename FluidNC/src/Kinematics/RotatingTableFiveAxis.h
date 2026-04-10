@@ -1,12 +1,3 @@
-//
-// Created by Tom Haas on 15.10.25.
-// Kinematics of a 5 axis machine (gantry with a rotating table and a tilting head).
-// X, Y are the gantry axes
-// Z is the vertical axis of the gantry
-// ROLL_AXIS is the tilt axis of the head
-// TABLE_AXIS is the rotation axis of the table
-//
-
 #ifndef INC_5AXISFLUIDNC_ROTATINGTABLEFIVEAXISNEW_H
 #define INC_5AXISFLUIDNC_ROTATINGTABLEFIVEAXISNEW_H
 
