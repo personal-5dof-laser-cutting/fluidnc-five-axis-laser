@@ -1,12 +1,3 @@
-//
-// Created by Tom Haas on 15.10.25.
-// Kinematics of a 5 axis machine (gantry with a rotating table and a tilting head).
-// X, Y are the gantry axes
-// Z is the vertical axis of the gantry
-// ROLL_AXIS is the tilt axis of the head
-// TABLE_AXIS is the rotation axis of the table
-//
-
 #ifndef INC_5AXISFLUIDNC_ROTATINGTABLEFIVEAXISNEW_H
 #define INC_5AXISFLUIDNC_ROTATINGTABLEFIVEAXISNEW_H
 
@@ -170,9 +161,6 @@ namespace Kinematics {
     public:
         explicit RotatingTableFiveAxis(const char* name) : Cartesian(name) {}
 
-        // FiveTuple struct - actual raw motor positions or cartesian positions
-
-        // Configurable parameters
         void group(Configuration::HandlerBase& handler) override;
         bool cartesian_to_motors(float* target, plan_line_data_t* pl_data, float* position) override;
         void init() override;
@@ -185,14 +173,12 @@ namespace Kinematics {
         float _max_z                    = 0.0f;
         float _focus_offset             = 0.0f;
         float _max_angle                = 0.0f;
-        float _kinematic_segment_len_mm = 1.0;
         float _center_x                 = 0;
         float _center_y                 = 0;
         float _rotation_offset          = 0;
         float _z_height                 = 0;
         float _max_x                    = 0.0f;
         float _max_y                    = 0.0f;
-        float _laser_head_z_angle       = 0.5f;
 
         // state parameters
         Vector3f _center = { 0, 0, 0 };
@@ -226,6 +212,7 @@ namespace Kinematics {
         // Move to motor position and update last_mpos
         void move_motors(const Mpos& pos, plan_line_data_t* pl_data);
 
+        // Check which of the two possible motor configurations is closer
         void cartesian_to_closest_furthest(const Cpos& cartesian, Mpos& closest, Mpos& furthest);
 
 

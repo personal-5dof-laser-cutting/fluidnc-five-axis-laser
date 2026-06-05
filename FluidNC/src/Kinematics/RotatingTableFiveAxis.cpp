@@ -22,14 +22,12 @@ namespace Kinematics {
         handler.item("max_z_mm", _max_z);
         handler.item("focus_offset", _focus_offset);
         handler.item("max_angle", _max_angle);
-        handler.item("kinematic_segment_len_mm", _kinematic_segment_len_mm);
         handler.item("center_x", _center_x);
         handler.item("center_y", _center_y);
         handler.item("rotation_offset", _rotation_offset);
         handler.item("z_height", _z_height);
         handler.item("max_x", _max_x);
         handler.item("max_y", _max_y);
-        handler.item("laser_z_angle", _laser_head_z_angle);
     }
 
     void RotatingTableFiveAxis::init() {
@@ -72,7 +70,7 @@ namespace Kinematics {
 
         auto position = Cpos(_position);
         auto target   = Cpos(_target);
-        // for the first call after homing, move to a sane position before continuing
+        // for the first call after homing, move to a safe position before continuing
         if (_homing) {
             _homing  = false;
             position = Cpos(_center_x, _center_y, target[Z_AXIS], 0, 0);
