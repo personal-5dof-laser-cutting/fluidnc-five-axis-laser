@@ -18,15 +18,15 @@ namespace Kinematics {
 
     void RotatingTableFiveAxis::group(Configuration::HandlerBase& handler) {
         Cartesian::group(handler);
-        handler.item("max_z_mm", _max_z);
-        handler.item("focus_offset", _focus_offset);
-        handler.item("max_angle", _max_angle);
-        handler.item("center_x", _center_x);
-        handler.item("center_y", _center_y);
-        handler.item("rotation_offset", _rotation_offset);
-        handler.item("z_height", _z_height);
-        handler.item("max_x", _max_x);
-        handler.item("max_y", _max_y);
+        handler.item("max_z_mm", _max_z);                   // limit for Z axis
+        handler.item("focus_offset", _focus_offset);        // distance between laser head nozzle and focus point
+        handler.item("max_angle", _max_angle);              // limit for B axis
+        handler.item("center_x", _center_x);                // X coordinate of center point of lazy susan
+        handler.item("center_y", _center_y);                // Y coordinate of center point of lazy susan used for calculating rotated coordinates
+        handler.item("rotation_offset", _rotation_offset);  // distance from 0° angle to homing position
+        handler.item("z_height", _z_height);                // distance between laser head nozzle and table surface
+        handler.item("max_x", _max_x);                      // limit for X axis
+        handler.item("max_y", _max_y);                      // limit for Y axis
     }
 
     void RotatingTableFiveAxis::init() {
@@ -75,6 +75,8 @@ namespace Kinematics {
             position = Cpos(_center_x, _center_y, target[Z_AXIS], 0, 0);
             move_motors(position, pl_data);
         }
+        // the Z axis needs to be moved to hold focus, while changing angles this could make the laser head crash into the table
+        // therefore moves have to be segmented and all axes should be calculated per segment
         segmented_move(position, target, pl_data);
         return true;
     }
@@ -188,6 +190,7 @@ namespace Kinematics {
         Mpos m1, m2;
         cartesian_to_possible_motors(cartesian, m1, m2);
 
+        // z axis clamping to cut out of focus instead of cancelling the cut
         clamp_bounds(m1);
         clamp_bounds(m2);
 
@@ -210,8 +213,10 @@ namespace Kinematics {
 
     void RotatingTableFiveAxis::direct_move(const Cpos& start, const Cpos& end, plan_line_data_t* pl_data) {
         Mpos closest, furthest;
+        // lazy susan design produces two possible coordinates for each cut (180° apart), choosing the closest one optimizes cut time
         cartesian_to_closest_furthest(end, closest, furthest);
 
+        // asymmetrical design allows some cuts to only be done at one of the two coordinates, one is out of bounds -> check the other
         if (is_in_bounds(closest)) {
             move_motors(closest, pl_data);
         } else {
@@ -245,11 +250,15 @@ namespace Kinematics {
 
     void RotatingTableFiveAxis::safe_fast_move_motors(const Mpos& start, const Mpos& goal, plan_line_data_t* pl_data) {
 
+        // disable laser
         auto st                     = pl_data->spindle;
         auto sm                     = pl_data->motion;
         pl_data->spindle            = SpindleState::Disable;
         pl_data->motion.rapidMotion = true;
 
+        // choosing the further of the two coordinates needs a travel move through the midpoint, changing the sign of the angle
+        // -> 0° ist part of that travel move which is also the lowest point the laser head can reach, to not crash into the table
+        // the Z axis is moved to the top position, travel move is executed, Z axis is lowered again
         auto start_higher    = start;
         auto goal_higher     = goal;
         start_higher[Z_AXIS] = 0;
@@ -270,6 +279,7 @@ namespace Kinematics {
         const float tan_b   = fabsf(tanf(end[B_AXIS] * to_radians) - tanf(start[B_AXIS] * to_radians)) * height_above_surface;
         const float max_tan = fmaxf(tan_a, tan_b);
 
+        // roundabout one segment per degree of angle change to calculate a safe travel path
         const int segment_count = std::max(1, static_cast<int>(std::ceil(max_tan / 2.0f)));
 
         const float inv  = 1.0f / static_cast<float>(segment_count);
@@ -277,6 +287,7 @@ namespace Kinematics {
 
         Cpos last = start;
 
+        // segmenting all axes and moving the machine segment-wise
         for (int i = 1; i <= segment_count; ++i) {
             const float p            = static_cast<float>(i) * inv;
             const auto  segment_cart = start + diff * p;
@@ -287,6 +298,7 @@ namespace Kinematics {
     }
 
     void RotatingTableFiveAxis::move_motors(const Mpos& pos, plan_line_data_t* pl_data) {
+        // moves motors and stores target position for future calculations
         auto copy = pos;
         if (mc_move_motors(copy.asFloatArray(), pl_data)) {
             _last_mpos = pos;
