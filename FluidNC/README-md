@@ -1,0 +1,51 @@
+# Kinematics Shared Library
+
+This allows Python to call the C++ kinematics calculations from the FluidNC firmware directly, without rewriting them. If the kinematics change, recompile the library and everything stays in sync.
+
+## Prerequisites
+
+- `g++` with C++17 support
+- The FluidNC firmware source code
+
+## Repository Setup
+
+The firmware repo should be available as a git submodule or sibling directory. All commands below assume you are running them from the **firmware repo root** (where `src/` and `platformio.ini` live).
+
+## Compilation
+
+### Linux (x86_64)
+
+```bash
+g++ -shared -fPIC -I. -Istubs -o kinematics.so \
+  kinematics_wrapper.cpp \
+  stubs/globals.cpp \
+  $(find src/Kinematics -name "*.cpp")
+```
+
+### macOS (Apple Silicon / arm64)
+
+```bash
+g++ -shared -fPIC -arch arm64 -I. -Istubs -o kinematics.dylib \
+  kinematics_wrapper.cpp \
+  stubs/globals.cpp \
+  $(find src/Kinematics -name "*.cpp")
+```
+
+### macOS (Intel / x86_64)
+
+```bash
+g++ -shared -fPIC -arch x86_64 -I. -Istubs -o kinematics.dylib \
+  kinematics_wrapper.cpp \
+  stubs/globals.cpp \
+  $(find src/Kinematics -name "*.cpp")
+```
+
+After compiling, copy the output file (`kinematics.so` or `kinematics.dylib`) to wherever your Python code can find it.
+
+## What the stubs/ folder is
+
+The firmware is written for an ESP32 microcontroller and depends on embedded headers (FreeRTOS, Arduino, ESP32 SDK) that don't exist on a desktop PC. The `stubs/` folder contains minimal fake versions of those headers — just enough to satisfy the compiler. They have no effect on the firmware itself and are never compiled into it.
+
+## Recompiling after kinematics changes
+
+Just rerun the compile command and copy the new `.so`/`.dylib` to your Python project. No other changes needed.
