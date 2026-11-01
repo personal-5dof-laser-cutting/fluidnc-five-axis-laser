@@ -1,1 +1,1 @@
-This is a fork of (FluidNC)[https://github.com/bdring/FluidNC] obtained under GPL license, modified for driving the 5DOF hardware prototyp presented in the UIST'26 paper "The Future of 5DOF Laser Cutting Is Personal.
+This is a fork of [FluidNC](https://github.com/bdring/FluidNC) obtained under GPL license, modified for driving the 5DOF hardware prototyp presented in the UIST'26 paper "The Future of 5DOF Laser Cutting Is Personal.
