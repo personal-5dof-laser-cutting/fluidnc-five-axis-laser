@@ -4,6 +4,7 @@
 #include "../Machine/MachineConfig.h"
 constexpr float to_radians = M_PI / 180.0;
 constexpr float to_degrees = 180.0 / M_PI;
+constexpr float angleoffs[] = {-2.1f, -1.75f, -1.0f, -0.55f, -0.5f, -0.4f, -0.3f, -0.15f, -0.05f, 0.0f, 0.25f, 0.7f, 1.0f, 1.4f, 1.8f, 2.2f, 3.0f, 2.8f, 3.3f};
 
 namespace Kinematics {
     // Configuration registration
@@ -135,9 +136,18 @@ namespace Kinematics {
             mpos[Z_AXIS] = _max_z;
     }
 
+    void RotatingTableFiveAxis::estimate_offsets(float x_off, Vector3f& offs) const {
+
+        offs[0] = x_off;
+        offs[1] = 0.0f;
+        offs[2] = 0.0f;
+
+        offs = offs.rotateZ(0.5f * to_radians);
+    }
+
     void RotatingTableFiveAxis::cartesian_to_possible_motors(const Cpos& cartesian, Mpos& m1, Mpos& m2) {
         // distance from rotation center of laser head to surface of work piece
-        float height_above_surface = _z_height + _rotation_offset - cartesian[Z_AXIS];
+        const float height_above_surface = _z_height + _rotation_offset - cartesian[Z_AXIS];
 
         // stores direction and distance of laser head rotation center to surface
         Vector3f direction({ tanf(cartesian[B_AXIS] * to_radians) * height_above_surface,
@@ -163,21 +173,25 @@ namespace Kinematics {
 
         Vector3f rotated_position = (position).rotateZ(table_angle, center_position);
 
-        // rotated_direction.norm() is exact distance from laser head rotation center to material surface
-        // subtracting _focus_offset and _rotation_offset gives distance between laser focus point
-        // and material surface
+        Vector3f offsets{0.0f, 0.0f, 0.0f};
+        estimate_offsets(x_offset, offsets);
+
+        //rotated_direction.norm() is exact distance between the rotation center of the laser head
+        // and the material surface, subtracting _focus_offset and _rotation_offset gives
+        // distance between focus point and surface
         m1[Z_AXIS] = (rotated_direction.norm() - (_focus_offset + _rotation_offset));
         m1[A_AXIS] = table_angle * to_degrees;
         m1[B_AXIS] = -atan2f(rotated_direction[0], -rotated_direction[2]) * to_degrees;
 
-        m1[X_AXIS] = rotated_position[0] - x_offset;
-        m1[Y_AXIS] = rotated_position[1];
+        m1[X_AXIS] = rotated_position[0] - offsets[0];// - offsets[0];
+        m1[Y_AXIS] = rotated_position[1] + offsets[1];
 
         // rotating calculated motors positions by 180° to get second option
         Vector3f rotated_position_right = position.rotateZ(M_PI + table_angle, center_position);
 
-        m2[X_AXIS] = rotated_position_right[0] + x_offset;
-        m2[Y_AXIS] = rotated_position_right[1];
+        estimate_offsets(-x_offset, offsets);
+        m2[X_AXIS] = rotated_position_right[0] - offsets[0]; // - offsets[0];
+        m2[Y_AXIS] = rotated_position_right[1] + offsets[1];
 
         m2[Z_AXIS] = m1[Z_AXIS];
         m2[A_AXIS] = (table_angle)*to_degrees + 180;
